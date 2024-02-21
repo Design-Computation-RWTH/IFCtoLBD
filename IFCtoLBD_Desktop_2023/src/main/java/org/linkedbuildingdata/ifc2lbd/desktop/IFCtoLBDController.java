@@ -68,6 +68,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeItem;
 import javafx.scene.image.Image;
@@ -193,6 +194,12 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 	@FXML
 	private ToggleSwitch hasSimpleProperties;
 
+	@FXML
+	private ToggleSwitch ifc_based_elements;
+	
+	
+	@FXML
+	private TitledPane options_panel;
 	
 	@FXML
 	private void closeApplicationAction() {
@@ -429,11 +436,14 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		} catch (Exception e) {
 			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
 		}
+		this.options_panel.setDisable(true);
 
 	}
 
 	@FXML
 	private void convertIFCToRDF() {
+		this.options_panel.setDisable(false);
+
 
 		this.prefs.putBoolean("lbd_building_elements", this.building_elements.isSelected());
 		this.prefs.putBoolean("lbd_building_elements_separate_file", this.building_elements_separate_file.isSelected());
@@ -449,6 +459,11 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		this.prefs.putBoolean("lbd_createUnits", this.createUnits.isSelected());
 		this.prefs.putBoolean("lbd_geolocation", this.geolocation.isSelected());
 
+		this.prefs.putBoolean("lbd_hasHierarchicalNaming", this.hasHierarchicalNaming.isSelected());
+		this.prefs.putBoolean("lbd_hasSimpleProperties", this.hasSimpleProperties.isSelected());
+
+		this.prefs.putBoolean("ifc_based_elements", this.ifc_based_elements.isSelected());
+		
 		this.conversionTxt.setText("");
 		try {
 			String uri_base = this.labelBaseURI.getText().trim();
@@ -469,20 +484,28 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 				selected_types.add(item.getValue());
 
 			}
-			this.running_conversion = this.executor.submit(new ConversionThread(this.running_read_in.get(),
-					selected_types, this.ifcFileName, uri_base, this.rdfTargetName, props_level,
+			
+			Set<String> selected_psets = new HashSet<>();
+			for (TreeItem<String> item : this.propertysets_checkbox.getCheckModel().getCheckedItems()) {
+				selected_psets.add(item.getValue());
+
+			}
+			
+			IFCtoLBDConverter converter = this.running_read_in.get();		
+			converter.setHasSimplified_properties(this.hasSimpleProperties.isSelected());
+			this.running_conversion = this.executor.submit(new ConversionThread(converter,
+					selected_types,selected_psets, this.ifcFileName, uri_base, this.rdfTargetName, props_level,
 					this.building_elements.isSelected(), this.building_elements_separate_file.isSelected(),
 					this.building_props.isSelected(), this.building_props_separate_file.isSelected(),
 					this.building_props_blank_nodes.isSelected(), this.geolocation.isSelected(), this.geometry_elements.isSelected(),
 					this.ifcOWL_elements.isSelected(), this.ifcOWL_elements.isSelected(), this.hasPerformanceBoost.isSelected(),
-					this.hasBoundingBox_WKT.isSelected(), this.hasHierarchicalNaming.isSelected()));
+					this.hasBoundingBox_WKT.isSelected(), this.hasHierarchicalNaming.isSelected(),this.ifc_based_elements .isSelected()));
 		} catch (Exception e) {
 			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
 		}
 
 	}
 
-	@SuppressWarnings("unused")
 	@Override
 	public void initialize(URL location, ResourceBundle resources) {
 		this.eventBus.register(this);
@@ -593,7 +616,12 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		this.ifcOWL_elements.setSelected(this.prefs.getBoolean("lbd_ifcOWL_elements", false));
 		this.createUnits.setSelected(this.prefs.getBoolean("lbd_createUnits", false));
 		this.geolocation.setSelected(this.prefs.getBoolean("lbd_geolocation", true));
+		
+		this.hasHierarchicalNaming.setSelected(this.prefs.getBoolean("lbd_hasHierarchicalNaming", false));
+		this.hasSimpleProperties.setSelected(this.prefs.getBoolean("lbd_hasSimpleProperties", false));
 
+		this.ifc_based_elements.setSelected(this.prefs.getBoolean("ifc_based_elements", false));
+		
 		this.hasPerformanceBoost.setSelected(this.prefs.getBoolean("lbd_performance", true));
 		if (this.ifcOWL_elements.isSelected()) {
 			this.hasPerformanceBoost.setSelected(false);

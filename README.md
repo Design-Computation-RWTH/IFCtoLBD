@@ -1,5 +1,5 @@
 # IFCtoLBD
-Version 2.43.4
+Version 2.43.5
 
 Contributors: Jyrki Oraskari, Mathias Bonduel, Kris McGlinn, Anna Wagner, Pieter Pauwels, Ville Kukkonen, Simon Steyskaland, Joel Lehtonen, Maxime Lefrançois, and Lewis John McGibbney.
 
@@ -275,6 +275,20 @@ java  -jar IFCtoLBD_CLI.jar Duplex_A_20110907.ifc --level 1 --target_file output
 ```
 
 ## Blog
+### February 21, 2024
+2D linegraph splits from the model 
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD/Split_Demo.png)
+The short example code can be found [here](/IFCtoLBD/examples.md).
+
+
+### January 30, 2024
+Simple graph plot with Python.  Source code is [here ](/IFCtoLBD_Python/examples.md).
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Python/graph_plot.png)
+
+### January 26, 2024
+Python visualization demo code available [here ](/IFCtoLBD_Python/examples.md).
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Python/Python3DDemo.png)
+
 ### January 02, 2024
 The recommendations was changed to encourage to use one of the last two performant Long-Term Support version of Java (17 or 21).
   
@@ -285,7 +299,7 @@ has that limitation.
 ### June 21, 2023  
 The new user interface is in the testing phase. This is not the final version yet. I still test how the filtering can be made smarter.
 
-![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Desktop_2023/src/main/resources/screen.PNG)
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Desktop_2023/src/main/resources/screen2.PNG) (updated 21st Feb, 2024).
 ### March 1, 2023  
 Tested and update the Python interface.
 

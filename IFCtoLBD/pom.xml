@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>io.github.jyrkioraskari</groupId>
 	<artifactId>ifc-to-lbd</artifactId>
-	<version>2.43.4</version>
+	<version>2.43.5</version>
 	<name>IFC to LBD Converter</name>
 	<licenses>
 		<license>
@@ -73,8 +73,8 @@
 	<dependencies>
 		<dependency>
 			<groupId>de.rwth-aachen.lbd</groupId>
-			<artifactId>idc_to_lbd_geometry</artifactId>
-			<version>2.43.4</version>
+			<artifactId>ifc_to_lbd_geometry</artifactId>
+			<version>2.43.5</version>
 			<exclusions>
 				<exclusion>
 					<groupId>org.slf4j</groupId>
@@ -149,9 +149,36 @@
 			<artifactId>jena-shaded-guava</artifactId>
 			<version>4.8.0</version>
 		</dependency>
-		
+		<!--
+		https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.16.1</version>
+		</dependency>
 
-		<!-- Thanks for using https://jar-download.com -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-geometry-core</artifactId>
+			<version>1.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-geometry-euclidean</artifactId>
+			<version>1.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-geometry-io-core</artifactId>
+			<version>1.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-geometry-io-euclidean</artifactId>
+			<version>1.0</version>
+		</dependency>
 	</dependencies>
 	<scm>
 		<connection>scm:git:github.com/jyrkioraskari/IFCtoLBD.git</connection>
@@ -376,4 +403,5 @@
 			<url>https://maven.pkg.github.com/jyrkioraskari/IFCtoLBD</url>
 		</repository>
 	</distributionManagement>
+	
 </project>

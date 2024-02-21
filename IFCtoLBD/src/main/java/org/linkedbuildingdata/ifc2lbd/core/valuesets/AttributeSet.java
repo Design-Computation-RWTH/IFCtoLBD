@@ -14,6 +14,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.linkedbuildingdata.ifc2lbd.core.utils.StringOperations;
@@ -46,6 +47,8 @@ import org.linkedbuildingdata.ifc2lbd.namespace.UNIT;
  */
 public class AttributeSet {
     private final Map<String, String> unitmap;
+    private final Map<String, String> property_replace_map;  // allows users to replace default properties
+    private String default_property_namespace;
 
     private static class PsetProperty {
         final Property p; // Jena RDF property
@@ -67,13 +70,30 @@ public class AttributeSet {
     private final Map<String, RDFNode> mapPnameValue = new HashMap<>();
     private final Map<String, RDFNode> mapPnameType = new HashMap<>();
 
-    public AttributeSet(String uriBase, Model lbd_model, int props_level, boolean hasBlank_nodes, Map<String, String> unitmap) {
+    public AttributeSet(String uriBase, Model lbd_model, int props_level, boolean hasBlank_nodes, Map<String, String> unitmap,boolean hasSimplified_properties,Map<String, String> property_replace_map) {
         this.unitmap = unitmap;
         this.uriBase = uriBase;
         this.lbd_model = lbd_model;
         this.props_level = props_level;
         this.hasBlank_nodes = hasBlank_nodes;
-        this.hasSimplified_properties = false;
+        this.hasSimplified_properties = hasSimplified_properties;
+        if(this.hasSimplified_properties)
+            this.default_property_namespace=LBD.ns;
+         else
+        	this.default_property_namespace=PROPS.ns;
+        this.property_replace_map=property_replace_map;
+    }
+    
+    public AttributeSet(String uriBase, Model lbd_model, int props_level, boolean hasBlank_nodes, Map<String, String> unitmap,boolean hasSimplified_properties,Map<String, String> property_replace_map,String default_property_namebase) {
+        this.unitmap = unitmap;
+        this.uriBase = uriBase;
+        this.lbd_model = lbd_model;
+        this.props_level = props_level;
+        this.hasBlank_nodes = hasBlank_nodes;
+        this.hasSimplified_properties = hasSimplified_properties;
+        
+        this.property_replace_map=property_replace_map;
+        this.setDefault_property_namespace(default_property_namebase);
     }
 
     public void putAnameValue(String attribute_name, RDFNode value, Optional<Resource> atype) {
@@ -105,10 +125,12 @@ public class AttributeSet {
                 else
                 {
                 	if(this.hasSimplified_properties)
-                		property = this.lbd_model.createProperty(LBD.lbd_ns + StringOperations.toCamelCase(pname.split(" ")[0]));
+                		property = this.lbd_model.createProperty(property_replace(this.default_property_namespace + StringOperations.toCamelCase(pname.split("Ifc")[0])));
                 	else
-                       property = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname) + "_attribute_simple");
-                	   
+                       property = this.lbd_model.createProperty(property_replace(this.default_property_namespace + StringOperations.toCamelCase(pname) + "_attribute_simple"));
+                	this.lbd_model.add(property, RDF.type, OWL.DatatypeProperty);
+                    this.lbd_model.add(property, RDFS.comment, "IFC standard attribute "+pname);
+
                 }
                 // No blank node etc is created, so no units expressed here
                 lbd_resource.addProperty(property, this.mapPnameValue.get(pname));
@@ -160,12 +182,15 @@ public class AttributeSet {
                 addUnit(property_resource, pname);
             }
 
-            Property p;
+            Property property;
             if(this.hasSimplified_properties)
-               p = this.lbd_model.createProperty(LBD.lbd_ns + StringOperations.toCamelCase(pname.split(" ")[0]));
+               property = this.lbd_model.createProperty(property_replace(this.default_property_namespace + StringOperations.toCamelCase(pname.split("Ifc")[0])));
             else
-            	p = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname));
-            properties.add(new PsetProperty(p, property_resource));
+               property = this.lbd_model.createProperty(property_replace(this.default_property_namespace + StringOperations.toCamelCase(pname)));
+            this.lbd_model.add(property, RDF.type, OWL.ObjectProperty);
+            this.lbd_model.add(property, RDFS.comment, "IFC standard attribute "+pname);
+
+            properties.add(new PsetProperty(property, property_resource));
         }
         return properties;
     }
@@ -220,9 +245,20 @@ public class AttributeSet {
         }
 
     }
+
+    private String property_replace(String property)
+    {    	
+    	return this.property_replace_map.getOrDefault(property,property);
+    }
     
     public Set<String> getPropertynames() {
 
     	return mapPnameType.keySet();
     }
+
+	public void setDefault_property_namespace(String default_property_namespace) {
+		this.default_property_namespace = default_property_namespace;
+	}
+    
+    
 }

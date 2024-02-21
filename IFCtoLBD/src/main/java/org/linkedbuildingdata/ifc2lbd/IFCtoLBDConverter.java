@@ -148,7 +148,6 @@ public class IFCtoLBDConverter extends IFCtoLBDConverterCore implements AutoClos
 		if (!uri.endsWith("#") && !uri.endsWith("/"))
 			uri += "#";
 		this.uriBase = Optional.of(uri);
-		System.out.println("Conversion starts");
 		initialise();
 
 		convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel, hasBuildingProperties,
@@ -175,7 +174,6 @@ public class IFCtoLBDConverter extends IFCtoLBDConverterCore implements AutoClos
 		if (!uri.endsWith("#") && !uri.endsWith("/"))
 			uri += "#";
 		this.uriBase = Optional.of(uri);
-		System.out.println("Conversion starts");
 		initialise();
 	}
 
@@ -269,23 +267,198 @@ public class IFCtoLBDConverter extends IFCtoLBDConverterCore implements AutoClos
 		boolean hasGeometry = props.isHasGeometry();
 		boolean exportIfcOWL=props.isExportIfcOWL();
 		boolean hasUnits= props.isHasUnits();
+		boolean hasBoundingBoxWKT=props.hasBoundingBoxWKT();
+		boolean hasHierarchicalNaming=props.hasHierarchicalNaming();
+		boolean hasPerformanceBoost=props.hasPerformanceBoost();
+		this.hasNonLBDElement=props.hasNonLBDElement();
+		
+		// Cannot ne used if ifcOWL is exported
+		if(hasPerformanceBoost && exportIfcOWL)
+			hasPerformanceBoost=!hasPerformanceBoost;
 
-		convert(ifc_filename, null, hasBuildingElements, hasSeparateBuildingElementsModel, hasBuildingProperties,
-				hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits);
+		convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel,
+				hasBuildingProperties, hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,
+				hasPerformanceBoost, hasBoundingBoxWKT,hasHierarchicalNaming);
 		return this.lbd_general_output_model;
 	}
 
 
+	/**
+	 * Convert an IFC STEP file into LBD
+	 * 
+	 * @param ifc_filename                     The absolute path for the IFC file
+	 *                                         that will be converted
+	 * @param target_file                      The main file name for the output. If
+	 *                                         there are many, they will be sharing
+	 *                                         the same beginning
+	 * @param hasBuildingElements              The Building Elements will be created
+	 *                                         in the output
+	 * @param hasSeparateBuildingElementsModel The Building elements will have a
+	 *                                         separate file
+	 * @param hasBuildingProperties            The properties will be added into the
+	 *                                         output
+	 * @param hasSeparatePropertiesModel       The properties will be written in a
+	 *                                         separate file
+	 * @param hasGeolocation                   Geolocation, i.e., the latitude and
+	 *                                         longitude are added.
+	 * @param hasGeometry                      If bounding boxes are created for
+	 *                                         elements.
+	 * @return The model as a Jena-model
+	 */
+
+	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
+			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
+			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits) {
+		boolean hasBoundingBoxWKT=false;
+
+		return convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel,
+				hasBuildingProperties, hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,
+                !exportIfcOWL, hasBoundingBoxWKT,false);
+	}
+	
+	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
+			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
+			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,boolean hasHierarchicalNaming) {
+		boolean hasBoundingBoxWKT=false;
+
+		return convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel,
+				hasBuildingProperties, hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,
+                !exportIfcOWL, hasBoundingBoxWKT,hasHierarchicalNaming);
+	}
+
+	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
+			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
+			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
+			boolean hasPerformanceBoost, boolean hasBoundingBoxWKT) {
+
+		
+		if(convert_read_in_phase(ifc_filename,target_file, hasGeometry,hasPerformanceBoost,exportIfcOWL, hasBuildingElements,  hasBuildingProperties, hasBoundingBoxWKT, hasUnits))			
+		{
+
+		   return convert_LBD_phase(hasBuildingElements,
+					hasSeparateBuildingElementsModel, hasBuildingProperties, hasSeparatePropertiesModel,
+					hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,	hasBoundingBoxWKT,false);	
+		}
+		
+		return null;
+	}
+	
+	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
+			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
+			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
+			boolean hasPerformanceBoost, boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming) {
+
+		
+		if(convert_read_in_phase(ifc_filename,target_file, hasGeometry,hasPerformanceBoost,exportIfcOWL, hasBuildingElements,  hasBuildingProperties, hasBoundingBoxWKT, hasUnits))			
+		{
+			
+		   return convert_LBD_phase(hasBuildingElements,
+					hasSeparateBuildingElementsModel, hasBuildingProperties, hasSeparatePropertiesModel,
+					hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,	hasBoundingBoxWKT,hasHierarchicalNaming);	
+		}
+		
+		return null;
+	}
+
+	private String target_file;
+	
+	public boolean convert_read_in_phase(String ifc_filename, String target_file, boolean hasGeometry,boolean hasPerformanceBoost,boolean exportIfcOWL, boolean hasBuildingElements, boolean hasBuildingProperties,boolean hasBoundingBoxWKT,boolean hasUnits) {
+
+		this.target_file=target_file;
+
+		if (ifc_filename.endsWith(".ifczip"))
+			ifc_filename = unzip(ifc_filename);
+
+		if (IfcOWLUtils.getExpressSchema(ifc_filename) == null) {
+			eventBus.post(new IFCtoLBD_SystemStatusEvent("Not a valid IFC version."));
+			return false;
+		}
+
+		CompletableFuture<IFCGeometry> future_ifc_geometry = null;
+		if (hasGeometry)
+			future_ifc_geometry = getgeom(ifc_filename);
+
+		if(hasPerformanceBoost)
+		   this.ifcowl_model = readAndConvertIFC2ifcOWL(ifc_filename, uriBase.get(), false, target_file,
+				hasPerformanceBoost); 
+		else
+		   this.ifcowl_model = readAndConvertIFC2ifcOWL(ifc_filename, uriBase.get(), !exportIfcOWL, target_file,
+				hasPerformanceBoost); // Before:
+
+		// Before:
+		if(this.ifcowl_model ==null)
+			return false;
+		
+		// readInOntologies(ifc_filename);
+
+		if (future_ifc_geometry != null) {
+			future_ifc_geometry.join();
+			try {
+				this.ifc_geometry = future_ifc_geometry.get(240, TimeUnit.SECONDS);  // max 240 sec
+			} catch (InterruptedException | ExecutionException | TimeoutException e) {
+				e.printStackTrace();
+			}
+        }
+		
+		eventBus.post(new IFCtoLBD_SystemStatusEvent("Reading in ontologies"));
+		readInOntologies(ifc_filename);
+		createIfcLBDProductMapping();
+
+		eventBus.post(new IFCtoLBD_SystemStatusEvent("Model ready in the memory. Select \"Convert out to RDF\" to continue."));
+		
+		this.hasBoundingBoxWKT = hasBoundingBoxWKT;
+		resetModels();
+
+		addNamespaces(uriBase.get(), props_level, hasBuildingElements, hasBuildingProperties);
+
+		eventBus.post(new IFCtoLBD_SystemStatusEvent("IFC->LBD"));
+		if (this.ontURI.isPresent())
+			this.ifcOWL = new IfcOWL(this.ontURI.get());
+		else {
+			System.out.println("No ifcOWL ontology available.");
+			eventBus.post(new IFCtoLBD_SystemStatusEvent("No ifcOWL ontology available."));
+			return false;
+		}
+
+		if (hasBuildingProperties) {
+			handleUnitsAndPropertySetData(props_level, hasPropertiesBlankNodes, hasUnits);
+		}
+		return true;
+	}
+
+
+	
+
+	public Model convert_LBD_phase(boolean hasBuildingElements,
+			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
+			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
+			boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming) {
+
+
+		
+		boolean namedGraphs=false; 
+		try {
+			conversion(this.target_file, hasBuildingElements, hasSeparateBuildingElementsModel, hasBuildingProperties,
+					hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, namedGraphs,hasHierarchicalNaming);
+		} catch (Exception e) {
+			e.printStackTrace();
+			eventBus.post(new IFCtoLBD_SystemErrorEvent(this.getClass().getSimpleName(),
+					"Conversion: " + e.getMessage() + " line:" + e.getStackTrace()[0].getLineNumber()));
+
+		}
+		eventBus.post(new IFCtoLBD_SystemStatusEvent("Conversion done"));
+		return lbd_general_output_model;
+
+	}
+	
+
 	private static String unzip(String ifcZipFile) {
 		int BUFFER_SIZE = 32 * 1024; // 32KB
-		// JO 2024: performance
 		try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(ifcZipFile),BUFFER_SIZE))){
 			byte[] buffer = new byte[1024];
 			
 			ZipEntry zipEntry = zis.getNextEntry();
 			while (zipEntry != null) {
-				System.out.println("entry: " + zipEntry);
-				//String name = zipEntry.getName().split("\\.")[0];
 				File newFile = File.createTempFile("ifc", ".ifc");
 
 				// JO 2024
@@ -340,189 +513,6 @@ public class IFCtoLBDConverter extends IFCtoLBDConverterCore implements AutoClos
 		return completableFuture;
 	}
 
-	/**
-	 * Convert an IFC STEP file into LBD
-	 * 
-	 * @param ifc_filename                     The absolute path for the IFC file
-	 *                                         that will be converted
-	 * @param target_file                      The main file name for the output. If
-	 *                                         there are many, they will be sharing
-	 *                                         the same beginning
-	 * @param hasBuildingElements              The Building Elements will be created
-	 *                                         in the output
-	 * @param hasSeparateBuildingElementsModel The Building elements will have a
-	 *                                         separate file
-	 * @param hasBuildingProperties            The properties will be added into the
-	 *                                         output
-	 * @param hasSeparatePropertiesModel       The properties will be written in a
-	 *                                         separate file
-	 * @param hasGeolocation                   Geolocation, i.e., the latitude and
-	 *                                         longitude are added.
-	 * @param hasGeometry                      If bounding boxes are created for
-	 *                                         elements.
-	 * @return The model as a Jena-model
-	 */
-
-	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
-			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
-			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits) {
-		boolean hasBoundingBoxWKT=false;
-
-		return convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel,
-				hasBuildingProperties, hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,
-                !exportIfcOWL, hasBoundingBoxWKT,false);
-	}
-	
-	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
-			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
-			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,boolean hasHierarchicalNaming) {
-		boolean hasBoundingBoxWKT=false;
-
-		return convert(ifc_filename, target_file, hasBuildingElements, hasSeparateBuildingElementsModel,
-				hasBuildingProperties, hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,
-                !exportIfcOWL, hasBoundingBoxWKT,hasHierarchicalNaming);
-	}
-
-	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
-			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
-			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
-			boolean hasPerformanceBoost, boolean hasBoundingBoxWKT) {
-
-		
-		if(convert_read_in_phase(ifc_filename,target_file, hasGeometry,hasPerformanceBoost,exportIfcOWL))			
-		{
-			if(!convert_unit_properties_phase( hasBuildingElements,  hasBuildingProperties,
-					 hasUnits,  hasBoundingBoxWKT))
-			{
-				return lbd_general_output_model; 
-			}
-		   return convert_LBD_phase(hasBuildingElements,
-					hasSeparateBuildingElementsModel, hasBuildingProperties, hasSeparatePropertiesModel,
-					hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,	hasBoundingBoxWKT,false);	
-		}
-		
-		return null;
-	}
-	
-	public Model convert(String ifc_filename, String target_file, boolean hasBuildingElements,
-			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
-			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
-			boolean hasPerformanceBoost, boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming) {
-
-		
-		if(convert_read_in_phase(ifc_filename,target_file, hasGeometry,hasPerformanceBoost,exportIfcOWL))			
-		{
-			if(!convert_unit_properties_phase( hasBuildingElements,  hasBuildingProperties,
-					 hasUnits,  hasBoundingBoxWKT))
-			{
-				return lbd_general_output_model; 
-			}
-		   return convert_LBD_phase(hasBuildingElements,
-					hasSeparateBuildingElementsModel, hasBuildingProperties, hasSeparatePropertiesModel,
-					hasGeolocation, hasGeometry, exportIfcOWL, hasUnits,	hasBoundingBoxWKT,hasHierarchicalNaming);	
-		}
-		
-		return null;
-	}
-
-	private String target_file;
-	
-	public boolean convert_read_in_phase(String ifc_filename, String target_file, boolean hasGeometry,boolean hasPerformanceBoost,boolean exportIfcOWL) {
-
-		this.target_file=target_file;
-
-		if (ifc_filename.endsWith(".ifczip"))
-			ifc_filename = unzip(ifc_filename);
-
-		if (IfcOWLUtils.getExpressSchema(ifc_filename) == null) {
-			eventBus.post(new IFCtoLBD_SystemStatusEvent("Not a valid IFC version."));
-			return false;
-		}
-
-		CompletableFuture<IFCGeometry> future_ifc_geometry = null;
-		if (hasGeometry)
-			future_ifc_geometry = getgeom(ifc_filename);
-
-		this.ifcowl_model = readAndConvertIFC2ifcOWL(ifc_filename, uriBase.get(), !exportIfcOWL, target_file,
-				hasPerformanceBoost); // Before:
-		if(this.ifcowl_model ==null)
-			return false;
-		
-		// readInOntologies(ifc_filename);
-		System.out.println("Geometry");
-
-		if (future_ifc_geometry != null) {
-			future_ifc_geometry.join();
-			try {
-				this.ifc_geometry = future_ifc_geometry.get(240, TimeUnit.SECONDS);  // max 240 sec
-			} catch (InterruptedException | ExecutionException | TimeoutException e) {
-				e.printStackTrace();
-			}
-        }
-		
-		System.out.println("Reading in ontologies");
-		eventBus.post(new IFCtoLBD_SystemStatusEvent("Reading in ontologies"));
-		readInOntologies(ifc_filename);
-		createIfcLBDProductMapping();
-
-		eventBus.post(new IFCtoLBD_SystemStatusEvent("Model ready in the memory. Select \"Convert out to RDF\" to continue."));
-		
-		
-
-		return true;
-	}
-
-
-	
-
-	public boolean convert_unit_properties_phase(boolean hasBuildingElements, boolean hasBuildingProperties,
-			boolean hasUnits, boolean hasBoundingBoxWKT) {
-		this.hasBoundingBoxWKT = hasBoundingBoxWKT;
-		resetModels();
-		System.out.println("Product mapping");
-
-		addNamespaces(uriBase.get(), props_level, hasBuildingElements, hasBuildingProperties);
-
-		eventBus.post(new IFCtoLBD_SystemStatusEvent("IFC->LBD"));
-		if (this.ontURI.isPresent())
-			this.ifcOWL = new IfcOWL(this.ontURI.get());
-		else {
-			System.out.println("No ifcOWL ontology available.");
-			eventBus.post(new IFCtoLBD_SystemStatusEvent("No ifcOWL ontology available."));
-			return false;
-		}
-
-		System.out.println("Conversion phase 1");
-		if (hasBuildingProperties) {
-			handleUnitsAndPropertySetData(props_level, hasPropertiesBlankNodes, hasUnits);
-		}
-		return true;
-	}
-
-	public Model convert_LBD_phase(boolean hasBuildingElements,
-			boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties, boolean hasSeparatePropertiesModel,
-			boolean hasGeolocation, boolean hasGeometry, boolean exportIfcOWL, boolean hasUnits,
-			boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming) {
-
-
-		
-		System.out.println("Conversion phase 2");
-
-		boolean namedGraphs=false; 
-		try {
-			conversion(this.target_file, hasBuildingElements, hasSeparateBuildingElementsModel, hasBuildingProperties,
-					hasSeparatePropertiesModel, hasGeolocation, hasGeometry, exportIfcOWL, namedGraphs,hasHierarchicalNaming);
-		} catch (Exception e) {
-			e.printStackTrace();
-			eventBus.post(new IFCtoLBD_SystemErrorEvent(this.getClass().getSimpleName(),
-					"Conversion: " + e.getMessage() + " line:" + e.getStackTrace()[0].getLineNumber()));
-
-		}
-		System.out.println("conversion done..");
-		eventBus.post(new IFCtoLBD_SystemStatusEvent("Conversion done"));
-		return lbd_general_output_model;
-
-	}
 	
 	@SuppressWarnings("unused")
 	public static void main(String[] args) {

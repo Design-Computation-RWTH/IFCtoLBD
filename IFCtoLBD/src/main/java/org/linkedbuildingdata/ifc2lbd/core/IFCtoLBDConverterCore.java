@@ -2,6 +2,7 @@
 package org.linkedbuildingdata.ifc2lbd.core;
 
 import java.io.File;
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,21 +37,6 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.XSD;
 import org.bimserver.plugins.renderengine.RenderEngineException;
-/*
- *  Copyright (c) 2017,2018,2019.2020 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 import org.linkedbuildingdata.ifc2lbd.application_messaging.IFC2LBD_ApplicationEventBusService;
 import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemErrorEvent;
 import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemExit;
@@ -75,6 +61,8 @@ import org.linkedbuildingdata.ifc2lbd.namespace.Product;
 import org.linkedbuildingdata.ifc2lbd.namespace.SMLS;
 import org.linkedbuildingdata.ifc2lbd.namespace.UNIT;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.davidmoten.rtreemulti.Entry;
 import com.github.davidmoten.rtreemulti.RTree;
 import com.github.davidmoten.rtreemulti.geometry.Geometry;
@@ -87,18 +75,34 @@ import de.rwth_aachen.dc.lbd.BoundingBox;
 import de.rwth_aachen.dc.lbd.IFCGeometry;
 import de.rwth_aachen.dc.lbd.ObjDescription;
 
+/*
+ *  Copyright (c) 2017,2018,2019.2020,2024 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 public abstract class IFCtoLBDConverterCore {
 	public final EventBus eventBus = IFC2LBD_ApplicationEventBusService.getEventBus();
 
 	private Set<String> selected_types; // The element types that are included in the output
 
-	protected Model ifcowl_model;
+	public Model ifcowl_model;
 	private Model ontology_model = null;
 	protected Map<String, List<Resource>> ifcowl_product_map = new HashMap<>();
 	protected Optional<String> uriBase = Optional.empty();
 
 	public Optional<String> ontURI = Optional.empty();
-	protected IfcOWL ifcOWL;
+	public IfcOWL ifcOWL;
 
 	// URI-property set
 	protected Map<String, PropertySet> propertysets = new HashMap<>();
@@ -121,7 +125,12 @@ public abstract class IFCtoLBDConverterCore {
 	protected boolean hasBoundingBoxWKT = false;
 
 	private boolean hasHierarchicalNaming_setting = false;
+	private boolean hasSimplified_properties = false;
 
+	protected boolean hasNonLBDElement = true;
+
+	private Map<String, String> property_replace_map = new HashMap<>(); // allows users to replace default properties
+																		// (for now foe the attributes)
 	private Dataset lbd_dataset = null;
 
 	public IFCtoLBDConverterCore() {
@@ -134,7 +143,7 @@ public abstract class IFCtoLBDConverterCore {
 			boolean hasBuildingProperties, boolean hasSeparatePropertiesModel, boolean hasGeolocation,
 			boolean hasGeometry, boolean exportIfcOWL, @SuppressWarnings("unused") boolean namedGraphs,
 			boolean hasHierarchicalNaming) {
-
+		this.handledAttributes4resource.clear(); // less performant but more dynamic
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("The LBD conversion starts"));
 		this.exportIfcOWL_setting = exportIfcOWL;
 		this.hasHierarchicalNaming_setting = hasHierarchicalNaming;
@@ -181,7 +190,6 @@ public abstract class IFCtoLBDConverterCore {
 
 		});
 
-		System.out.println("geo ..");
 		if (hasGeolocation) {
 			this.eventBus.post(new IFCtoLBD_SystemStatusEvent("Geo location is calculated."));
 			try {
@@ -193,7 +201,6 @@ public abstract class IFCtoLBDConverterCore {
 			}
 		}
 
-		System.out.println("geo done");
 		if (hasBuildingElements) {
 			if (hasSeparateBuildingElementsModel) {
 				if (target_file != null) {
@@ -460,7 +467,6 @@ public abstract class IFCtoLBDConverterCore {
 	 * @param hasPropertiesBlankNodes If the nameless nodes are used.
 	 */
 	protected void handleUnitsAndPropertySetData(int props_level, boolean hasPropertiesBlankNodes, boolean hasUnits) {
-		System.out.println("Property sets");
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("Handle Property set data"));
 		Resource ifcproject = IfcOWLUtils.getIfcProject(this.ifcOWL, this.ifcowl_model);
 
@@ -470,9 +476,7 @@ public abstract class IFCtoLBDConverterCore {
 
 			if (ifcproject != null) {
 				List<RDFNode> units = RDFUtils.pathQuery(ifcproject, project_units_path);
-				System.out.println("units size: " + units.size());
 				for (RDFNode ru : units) {
-					System.out.println("ru: " + ru);
 					RDFStep[] namedUnit_path = { new RDFStep(this.ifcOWL.getUnitType_IfcNamedUnit()) };
 					List<RDFNode> r1 = RDFUtils.pathQuery(ru.asResource(), namedUnit_path);
 
@@ -498,7 +502,7 @@ public abstract class IFCtoLBDConverterCore {
 						si_unit = si_prefix + " " + si_unit;
 
 					if (named_unit != null && si_unit != null) {
-						System.out.println("SI UNIT: " + named_unit + " - " + si_unit);
+						// System.out.println("SI UNIT: " + named_unit + " - " + si_unit);
 						this.unitmap.put(named_unit.toLowerCase(), si_unit);
 					}
 				}
@@ -542,13 +546,15 @@ public abstract class IFCtoLBDConverterCore {
 						RDFStep[] value_pathD = { new RDFStep(this.ifcOWL.getNominalValue_IfcPropertySingleValue()),
 								new RDFStep(IfcOWL.Express.getHasDouble()) }; // xsd:decimal
 						RDFUtils.pathQuery(propertySingleValue.asResource(), value_pathD).forEach(value -> {
-							if (property_name.toString().equals("[Width]"))
-								System.out.println("Property value 1 for " + property_name + " was: " + value);
+							// if (property_name.toString().equals("[Width]"))
+							// System.out.println("Property value 1 for " + property_name + " was: " +
+							// value);
 							if (value.asLiteral().getDatatypeURI().equals(XSD.xdouble.getURI()))
 								value = this.ifcowl_model.createTypedLiteral(
 										BigDecimal.valueOf(value.asLiteral().getDouble()), XSD.decimal.getURI());
-							if (property_name.toString().equals("[Width]"))
-								System.out.println("Property value 2 for " + property_name + " was: " + value);
+							// if (property_name.toString().equals("[Width]"))
+							// System.out.println("Property value 2 for " + property_name + " was: " +
+							// value);
 							property_value.add(value);
 						}
 
@@ -616,6 +622,103 @@ public abstract class IFCtoLBDConverterCore {
 
 				});
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("LBD properties read"));
+		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("Handle quantity set data"));
+
+		IfcOWLUtils.listQuantitySets(this.ifcOWL, this.ifcowl_model).stream().map(RDFNode::asResource)
+				.forEach(quantityset -> {
+					System.out.println("Quantity set: " + quantityset);
+					RDFStep[] qsname_path = { new RDFStep(this.ifcOWL.getName_IfcRoot()),
+							new RDFStep(IfcOWL.Express.getHasString()) };
+					
+					final List<RDFNode> quantityset_name = new ArrayList<>(
+							RDFUtils.pathQuery(quantityset, qsname_path)); // fine qset name
+
+					
+					PropertySet quantity_set = this.propertysets.get(quantityset.getURI());
+					if (quantity_set == null) {
+						if (!quantityset_name.isEmpty())
+							quantity_set = new PropertySet(this.uriBase.get(), this.lbd_property_output_model,
+									this.ontology_model, quantityset_name.get(0).toString(), props_level,
+									hasPropertiesBlankNodes, this.unitmap, hasUnits);
+						else
+							quantity_set = new PropertySet(this.uriBase.get(), this.lbd_property_output_model,
+									this.ontology_model, "", props_level, hasPropertiesBlankNodes, this.unitmap,
+									hasUnits);
+						this.propertysets.put(quantityset.getURI(), quantity_set);
+
+						
+					final PropertySet final_quantity_set = quantity_set;
+					RDFStep[] path = { new RDFStep(this.ifcOWL.getQuantities_IfcElementQuantity()) };
+					RDFUtils.pathQuery(quantityset, path).forEach(quantity -> {
+						System.out.println("quantity:" + quantity);
+						final List<String> name = new ArrayList<>();
+						quantity.asResource().listProperties().forEach(property_value -> {
+							
+							if (property_value.getPredicate().getLocalName().contains("name_")) {
+								System.out.println("name:" + property_value.getObject().asResource().getLocalName());
+								RDFStep[] qname_path = { new RDFStep(IfcOWL.Express.getHasString()) };
+								List<RDFNode> names = RDFUtils.pathQuery(property_value.getObject().asResource(),
+										qname_path);
+								if (names.size() > 0)
+									name.add(names.get(0).toString());
+							}
+						});
+							
+						quantity.asResource().listProperties().forEach(property_value -> {
+								
+							System.out.println("qname is: "+name+" val? :"+property_value.getPredicate().getLocalName());
+							if (!name.isEmpty() &&property_value.getPredicate().getLocalName().contains("Value_")) {
+								System.out.println("value:" + property_value.getObject().asResource().getLocalName());
+
+								RDFStep[] value_pathS = {
+										new RDFStep(IfcOWL.Express.getHasString()) };
+								final List<RDFNode> q_value = new ArrayList<>(
+										RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathS));
+
+								RDFStep[] value_pathD = {
+										new RDFStep(IfcOWL.Express.getHasDouble()) }; // xsd:decimal
+
+								RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathD)
+										.forEach(value -> {
+											if (value.asLiteral().getDatatypeURI().equals(XSD.xdouble.getURI()))
+												value = this.ifcowl_model.createTypedLiteral(
+														BigDecimal.valueOf(value.asLiteral().getDouble()),
+														XSD.decimal.getURI());
+											System.out.println("Double found for: "+property_value.getObject());
+											q_value.add(value);
+										}
+
+										);
+								
+								RDFStep[] value_pathI = { 
+										new RDFStep(IfcOWL.Express.getHasInteger()) };
+								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathI));
+
+								RDFStep[] value_pathB = { 
+										new RDFStep(IfcOWL.Express.getHasBoolean()) };
+								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathB));
+
+								RDFStep[] value_pathL = {
+										new RDFStep(IfcOWL.Express.getHasLogical()) };
+								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathL));
+
+								if(!q_value.isEmpty())
+								{
+								   RDFNode qvalue = q_value.get(0);
+								   System.out.println("Add value: "+name+" val:"+qvalue);
+								   final_quantity_set.putPnameValue(name.get(0), qvalue);
+								}
+								else
+									System.out.println("qval empty "+q_value+" for: "+property_value.getObject());
+							}
+							
+							
+						});
+					});
+				};
+	});
+		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("LBD quantity sets read"));
+
 	}
 
 	/**
@@ -681,10 +784,12 @@ public abstract class IFCtoLBDConverterCore {
 
 				if (!this.selected_types.contains(bot_type.get().getLocalName()))
 					return null;
-
+			} else {
+				if (!this.hasNonLBDElement)
+					return null;
 			}
+
 		}
-		// System.out.println("Connect element: " + ifcOWL_element);
 		if (bot_type.isPresent()) {
 			Resource lbd_element = LBD_RDF_Utils.createformattedURIRecource(ifcOWL_element,
 					this.lbd_general_output_model, bot_type.get().getLocalName(), this.ifcOWL, this.uriBase.get(),
@@ -734,7 +839,11 @@ public abstract class IFCtoLBDConverterCore {
 				if (!this.selected_types.contains(bot_type.get().getLocalName()))
 					return;
 
+			} else {
+				if (!this.hasNonLBDElement)
+					return;
 			}
+
 		}
 
 		if (bot_type.isPresent()) {
@@ -824,7 +933,9 @@ public abstract class IFCtoLBDConverterCore {
 
 				if (!this.selected_types.contains(lbd_product_type.get().getLocalName()))
 					return null;
-
+			} else {
+				if (!this.hasNonLBDElement)
+					return null;
 			}
 		}
 
@@ -880,7 +991,7 @@ public abstract class IFCtoLBDConverterCore {
 		addGeometry(bot_r, guid);
 		String uncompressed_guid = GuidCompressor.uncompressGuidString(guid);
 		final AttributeSet connected_attributes = new AttributeSet(this.uriBase.get(), output_model, this.props_level,
-				this.hasPropertiesBlankNodes, this.unitmap);
+				this.hasPropertiesBlankNodes, this.unitmap, this.hasSimplified_properties, this.property_replace_map);
 		r.listProperties().forEachRemaining(s -> {
 			String ps = s.getPredicate().getLocalName();
 			Resource attr = s.getObject().asResource();
@@ -1036,15 +1147,15 @@ public abstract class IFCtoLBDConverterCore {
 				String ifcowlfilename;
 				ifcowlfilename = targetFile.substring(0, targetFile.lastIndexOf(".")) + "_ifcOWL.ttl";
 				outputFile = new File(ifcowlfilename);
-				if (outputFile.exists() && outputFile.length() > 1000) {
+				if (outputFile.exists() && outputFile.length() > 1000 && hasPerformanceBoost) { // Only when the
+																								// performance boost
+																								// selected
 					System.out.println("Using existing ifcOWL file");
 					this.eventBus.post(new IFCtoLBD_SystemStatusEvent("Using existing ifcOWL file"));
 					Model model = ModelFactory.createDefaultModel();
-					System.out.println("ifcOWL read in");
 
 					// model.read(new FileInputStream(ifcowlfilename), null, "TTL");
 					RDFDataMgr.read(model, ifcowlfilename);
-					System.out.println("ifcOWL read in done");
 					String inst_ns = model.getNsPrefixMap().get("inst");
 					if (inst_ns != null && this.ontURI.isEmpty())
 						this.uriBase = Optional.of(inst_ns);
@@ -1069,7 +1180,6 @@ public abstract class IFCtoLBDConverterCore {
 
 			File t2 = IfcOWLUtils.characterCoding(outputFile); // UTF-8 characters
 			RDFDataMgr.read(m, Objects.requireNonNullElse(t2, outputFile).getAbsolutePath());
-			System.out.println("ifcOWL read in done");
 			return m;
 
 		} catch (Exception e) {
@@ -1106,7 +1216,7 @@ public abstract class IFCtoLBDConverterCore {
 				file = file.substring(file.indexOf("pset"));
 				file = file.replaceAll("\\\\", "/");
 				RDFUtils.readInOntologyTTL(this.ontology_model, file, this.eventBus);
-				System.out.println("read ontology file : " + file);
+				// System.out.println("read ontology file : " + file);
 			}
 
 		} catch (Exception e) {
@@ -1119,8 +1229,6 @@ public abstract class IFCtoLBDConverterCore {
 	// int ios = 0;
 
 	protected void initialise() {
-		System.out.println("init 1.1");
-
 		this.ontology_model = ModelFactory.createDefaultModel();
 		this.lbd_general_output_model = ModelFactory.createDefaultModel();
 		this.lbd_product_output_model = ModelFactory.createDefaultModel();
@@ -1178,7 +1286,37 @@ public abstract class IFCtoLBDConverterCore {
 	 */
 	public void setSelected_types(Set<String> selected_types) {
 		this.selected_types = selected_types;
-		System.out.println("updated selection: " + selected_types);
+	}
+
+	/**
+	 * Sets the element types that are included in the output
+	 * 
+	 * @param selected_types list of types
+	 */
+	public void setSelected_psets(Set<String> selected_psets) {
+		for (PropertySet pset : this.propertysets.values()) {
+			if (selected_psets.contains(pset.getPropertyset_name())) {
+				pset.setActive(true);
+			} else {
+				pset.setActive(false);
+			}
+		}
+	}
+
+	public void setSelected_psets(String selected_psets_json) {
+		try {
+			Set<String> selected_psets = new ObjectMapper().readValue(selected_psets_json, HashSet.class);
+			for (PropertySet pset : this.propertysets.values()) {
+				if (selected_psets.contains(pset.getPropertyset_name())) {
+					pset.setActive(true);
+				} else {
+					pset.setActive(false);
+				}
+			}
+		} catch (JsonProcessingException e) {
+			e.printStackTrace();
+		}
+
 	}
 
 	public void resetModels() {
@@ -1214,11 +1352,6 @@ public abstract class IFCtoLBDConverterCore {
 		}
 	}
 
-	// Should be done only when the app is closing
-	public void closeJava() {
-		System.exit(0);
-	}
-
 	public String getObjJSON() {
 		if (!this.has_geometry.isEmpty()) {
 			Query query = QueryFactory.create("""
@@ -1237,6 +1370,113 @@ public abstract class IFCtoLBDConverterCore {
 			}
 		} else
 			return "";
+	}
+
+	public String getObjJSON(String json_query) {
+
+		Query query = QueryFactory.create(json_query, Syntax.syntaxARQ);
+
+		try (QueryExecution queryExecution = QueryExecutionFactory.create(query, this.lbd_general_output_model)) {
+			JsonArray jsonArray;
+			try {
+				jsonArray = queryExecution.execJson();
+			} catch (Exception e) {
+				return "";
+			}
+			return jsonArray.toString();
+		}
+
+	}
+
+	public String getJSONLD() {
+		StringWriter sw = new StringWriter();
+		RDFDataMgr.write(sw, lbd_general_output_model, RDFFormat.JSONLD);
+		return sw.toString();
+	}
+
+	public double getGeometryMinX() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().min(0);
+		else
+			return 0d;
+	}
+
+	public double getGeometryMinY() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().min(1);
+		else
+			return 0d;
+	}
+
+	public double getGeometryMinZ() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().min(2);
+		else
+			return 0d;
+	}
+
+	public double getGeometryMaxX() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().max(0);
+		else
+			return 0d;
+	}
+
+	public double getGeometryMaxY() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().max(1);
+		else
+			return 0d;
+	}
+
+	public double getGeometryMaxZ() {
+		if (this.rtree.mbr().isPresent())
+			return this.rtree.mbr().get().max(2);
+		else
+			return 0d;
+	}
+
+	public List<Resource> getElementByGeometry(double x1, double y1, double z1, double x2, double y2, double z2) {
+		List<Resource> result = new ArrayList<>();
+		Rectangle rectangle = Rectangle.create(x1, y1, z1, x2, y2, z2);
+
+		Iterable<Entry<Resource, Geometry>> results = this.rtree.search(rectangle);
+		for (Entry<Resource, Geometry> e : results) {
+			result.add(e.value());
+		}
+		return result;
+	}
+
+	// Affects property sets only after: convert_read_in_phase
+	public void setHasSimplified_properties(boolean hasSimplified_properties) {
+		System.out.println("set simple: " + hasSimplified_properties);
+		this.hasSimplified_properties = hasSimplified_properties;
+
+		for (PropertySet pset : this.propertysets.values())
+			pset.setHasSimplified_properties(hasSimplified_properties);
+	}
+
+	public void setProperty_replace_map(Map<String, String> property_replace_map) {
+		this.property_replace_map = property_replace_map;
+	}
+
+	public void setProperty_replace_map(String property_replace_map_json) {
+		try {
+			Map<String, String> mapping = new ObjectMapper().readValue(property_replace_map_json, HashMap.class);
+			this.property_replace_map = mapping;
+		} catch (JsonProcessingException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	// Should be done only when the app is closing
+	public void closeJava() {
+		System.exit(0);
+	}
+
+	public void setHasNonLBDElement(boolean hasNonLBDElement) {
+		this.hasNonLBDElement = hasNonLBDElement;
 	}
 
 }

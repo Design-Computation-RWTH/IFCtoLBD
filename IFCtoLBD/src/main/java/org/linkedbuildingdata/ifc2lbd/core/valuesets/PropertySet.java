@@ -16,16 +16,18 @@ import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.linkedbuildingdata.ifc2lbd.core.utils.StringOperations;
+import org.linkedbuildingdata.ifc2lbd.namespace.LBD;
 import org.linkedbuildingdata.ifc2lbd.namespace.OPM;
 import org.linkedbuildingdata.ifc2lbd.namespace.PROPS;
 import org.linkedbuildingdata.ifc2lbd.namespace.SMLS;
 import org.linkedbuildingdata.ifc2lbd.namespace.UNIT;
 
 /*
- *  Copyright (c) 2017,2018,2019.2020 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
+ *  Copyright (c) 2017,2018,2019.2020, 2024 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +48,7 @@ import org.linkedbuildingdata.ifc2lbd.namespace.UNIT;
  *
  */
 public class PropertySet {
+	private boolean isActive=true;
     private final Map<String, String> unitmap;
 
     private static class PsetProperty {
@@ -65,7 +68,7 @@ public class PropertySet {
 
 	private final int props_level;
     private final boolean hasBlank_nodes;
-    private final boolean hasSimplified_properties;
+    private boolean hasSimplified_properties;
 
     private final Map<String, RDFNode> mapPnameValue = new HashMap<>();
     private final Map<String, RDFNode> mapPnameType = new HashMap<>();
@@ -75,7 +78,10 @@ public class PropertySet {
     private boolean is_bSDD_pset = false;
     private Resource psetDef = null;
     private final boolean hasUnits;
-
+    private static long pset_counter=0;
+    private long pset_inx=0;
+    private boolean done=false;
+    
     public PropertySet(String uriBase, Model lbd_model, Model ontology_model, String propertyset_name, int props_level, boolean hasBlank_nodes, Map<String, String> unitmap, boolean hasUnits) {
         this.unitmap = unitmap;
         this.uriBase = uriBase;
@@ -92,6 +98,8 @@ public class PropertySet {
             psetDef = iter.next().getSubject();
         }
         this.hasSimplified_properties = false;
+        PropertySet.pset_counter++;
+        this.pset_inx=PropertySet.pset_counter;
     }
 
     public void putPnameValue(String property_name, RDFNode value) {
@@ -118,10 +126,14 @@ public class PropertySet {
                 while (iterProp.hasNext()) {
                     Literal psetPropName = iterProp.next().getLiteral();
                     if (psetPropName.getString().equals(pname))
-                        mapBSDD.put(StringOperations.toCamelCase(property.toString()), prop);
+                    {
+                    	mapBSDD.put(StringOperations.toCamelCase(property.toString()), prop);
+                    }
                     else {
                         if (psetPropName.getString().toUpperCase().equals(pname.toUpperCase()))
+                        {
                             mapBSDD.put(pname, prop);
+                        }
                     }
                 }
             }
@@ -137,9 +149,31 @@ public class PropertySet {
      *            The GUID of the elemet in the long form
      */
     Set<String> hashes = new HashSet<>();
-
+    private boolean pksetclasses=false;
     public void connect(Resource lbd_resource, String long_guid) {
+    	System.out.println("connect: "+this.getPropertyset_name()+" - "+lbd_resource.getLocalName());
+    	Resource to_connect=lbd_resource;
+    	if(pksetclasses)
+    	{
+    		to_connect=this.lbd_model.createResource(this.uriBase + "pset_" + this.propertyset_name + "_" + this.pset_inx);
+    		if(this.propertyset_name.contains("Common"))
+    		{
+        		Resource bsdd_class = this.lbd_model.createResource("https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/"+this.propertyset_name);
+    			to_connect.addProperty(RDF.type, bsdd_class);
 
+    		}
+    		Property property = this.lbd_model.createProperty(LBD.ns + "has"+this.propertyset_name.replace(" ", "_"));
+    		lbd_resource.addProperty(property,to_connect);
+    		if(this.done)
+    		{
+    			// Already done pset, just connect
+    			return;
+    		}
+    		this.done=true;
+    	}
+    	
+    	if(!this.isActive)
+    		return;
         if (this.mapPnameValue.keySet().size() > 0)
             switch (this.props_level) {
                 case 1:
@@ -147,11 +181,13 @@ public class PropertySet {
                 for (String pname : this.mapPnameValue.keySet()) {
                     Property property;                  
                     if(this.hasSimplified_properties)
-                		property = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname.split(" ")[0]));
+                		property = this.lbd_model.createProperty(PROPS.ns + StringOperations.toCamelCase(pname.split(" ")[0]));
                 	else
-                       property = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname) + "_attribute_simple");
-                    
-                    lbd_resource.addProperty(property, this.mapPnameValue.get(pname));
+                       property = this.lbd_model.createProperty(PROPS.ns + StringOperations.toCamelCase(pname) + "_property_simple");
+                	this.lbd_model.add(property, RDF.type, OWL.DatatypeProperty);
+                    this.lbd_model.add(property, RDFS.comment, "IFC property set "+this.propertyset_name+" property "+pname);
+
+                    to_connect.addProperty(property, this.mapPnameValue.get(pname));
                 }
                     break;
                 case 2:
@@ -159,7 +195,7 @@ public class PropertySet {
                 if (hashes.add(long_guid)) {
                     List<PsetProperty> properties = writeOPM_Set(long_guid);
                     for (PsetProperty pp : properties) {
-                        if (!this.lbd_model.listStatements(lbd_resource, pp.p, pp.r).hasNext()) {
+                        if (!this.lbd_model.listStatements(to_connect, pp.p, pp.r).hasNext()) {
                             lbd_resource.addProperty(pp.p, pp.r);
                         }
                     }
@@ -168,7 +204,7 @@ public class PropertySet {
             }
     }
 
-    static long state_resourse_counter = 0;
+    static private long  state_resourse_counter = 0;
     private List<PsetProperty> writeOPM_Set(String long_guid) {
         List<PsetProperty> properties = new ArrayList<>();
         LocalDateTime datetime = LocalDateTime.now();
@@ -181,7 +217,7 @@ public class PropertySet {
                 property_resource.addProperty(RDF.type, OPM.property);
             }
 
-            if (mapBSDD.get(pname) != null)
+            if (this.mapBSDD.get(pname) != null)
                 property_resource.addProperty(RDFS.seeAlso, mapBSDD.get(pname));
             
             // Just the complete name
@@ -210,11 +246,15 @@ public class PropertySet {
                     addUnit(property_resource, pname);
             }
 
-            Property p;
+            Property property;
             if(this.hasSimplified_properties)
-               p = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname.split(" ")[0]));
+               property = this.lbd_model.createProperty(PROPS.ns + StringOperations.toCamelCase(pname.split(" ")[0]));
             else
-            	p = this.lbd_model.createProperty(PROPS.props_ns + StringOperations.toCamelCase(pname));            properties.add(new PsetProperty(p, property_resource));
+            	property = this.lbd_model.createProperty(PROPS.ns + StringOperations.toCamelCase(pname));            properties.add(new PsetProperty(property, property_resource));
+            	
+            	this.lbd_model.add(property, RDF.type, OWL.ObjectProperty);
+            	this.lbd_model.add(property, RDFS.comment, "IFC property set "+this.propertyset_name+" property "+pname);
+            	
         }
         return properties;
     }
@@ -313,6 +353,14 @@ public class PropertySet {
 
     public String getPropertyset_name() {
 		return propertyset_name;
+	}
+
+	public void setActive(boolean isActive) {
+		this.isActive = isActive;
+	}
+
+	public void setHasSimplified_properties(boolean hasSimplified_properties) {
+		this.hasSimplified_properties = hasSimplified_properties;
 	}
 
 
