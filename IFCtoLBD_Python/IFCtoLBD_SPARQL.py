@@ -8,11 +8,11 @@ import jpype.imports
 # Pull in types
 from jpype.types import *
 
-jpype.startJVM(classpath = ['jars/*'])
+jpype.startJVM(classpath = ['./jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.apache.jena.query import QueryFactory, QueryExecutionFactory
-
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+QueryFactory= jpype.JClass("org.apache.jena.query.QueryFactory")
+QueryExecutionFactory= jpype.JClass("org.apache.jena.query.QueryExecutionFactory")
 
 # Convert the IFC file into LBD, OPM level 1 model
 lbdconverter = IFCtoLBDConverter("https://example.domain.de/",  1)

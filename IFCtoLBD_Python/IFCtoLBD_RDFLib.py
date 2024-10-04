@@ -10,7 +10,7 @@ import jpype.imports
 # Pull in types
 from jpype.types import *
 
-jpype.startJVM(classpath = ['jars/*'])
+jpype.startJVM(classpath = ['./jars/*'])
 
 from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
 from org.linkedbuildingdata.ifc2lbd import ConversionProperties
@@ -30,12 +30,16 @@ from org.linkedbuildingdata.ifc2lbd import ConversionProperties
 
 props = ConversionProperties();
 props.setHasGeometry(True);
-# Convert the IFC file into LBD, OPM level 1 model
+# Convert the IFC (Industry Foundation Classes) file into LBD (Linked Building Data), OPM (Ontology for Property Management) level 1 model
 lbdconverter = IFCtoLBDConverter("https://example.domain.de/",  1)
 
-lbdconverter.convert("Duplex_A_20110505.ifc",props)
+# Convert the specified IFC file ("Duplex_A_20110505.ifc") using the provided properties (props)
+lbdconverter.convert("Duplex_A_20110505.ifc", props)
+
+# Export the output as JSON-LD
 lbd_jsonld = str(lbdconverter.getJSONLD())
 g = Graph()
+# Parse it into the Python native rdflib Graph
 g.parse(data=json.loads(lbd_jsonld), format='json-ld')
 
 q = """

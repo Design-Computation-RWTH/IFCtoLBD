@@ -1,6 +1,6 @@
 
 /*
- *  Copyright (c) 2017,2023 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
+ *  Copyright (c) 2017,2023, 2024 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,6 +81,26 @@ import javafx.scene.layout.AnchorPane;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+
+/*
+ 
+Main Components
+- Event Handling: Uses Google Guava's EventBus for handling application events.
+- File Handling: Uses FileChooser for selecting IFC and target RDF files.
+
+- Conversion Process
+  -- Reads IFC files.
+  -- Converts them to RDF format.
+
+Methods
+- initialize(): Initializes the UI components and sets up event handlers.
+- selectIFCFile(): Handles the selection of IFC files.
+- selectTargetFile(): Handles the selection of target RDF files.
+- convertIFCToRDF(): Initiates the conversion process.
+- readInIFC(): Reads the IFC file and prepares for conversion.
+- handle_notification(), handleEvent(): Methods to handle various events and update the UI accordingly.
+ 
+ */
 
 public class IFCtoLBDController implements Initializable, FxInterface {
 	private Preferences prefs = Preferences.userNodeForPackage(IFCtoLBDController.class);
@@ -168,6 +188,10 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 	@FXML
 	private ToggleSwitch geometry_elements;
 
+	@FXML
+	private ToggleSwitch geometry_interfaces;
+
+	
 	@FXML
 	private ToggleSwitch hasBoundingBox_WKT;
 
@@ -396,8 +420,29 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 	Future<IFCtoLBDConverter> running_read_in;
 	Future<Integer> running_conversion;
 
+	private String fingerprint="";
+	private String selections_fingerprint() {
+		String uri_base = this.labelBaseURI.getText().trim();
+		int props_level = 2;
+		if (this.level1.isSelected())
+				props_level = 1;
+			if (this.level3.isSelected())
+				props_level = 3;
+			
+			String fingerprint=this.ifcFileName + uri_base + this.rdfTargetName + props_level +  this.building_elements.isSelected() +
+			this.building_elements_separate_file.isSelected() + this.building_props.isSelected() + this.building_props_separate_file.isSelected() + this.building_props_blank_nodes.isSelected()+
+			this.geolocation.isSelected() + this.geometry_elements.isSelected()+ this.ifcOWL_elements.isSelected()+ this.ifcOWL_elements.isSelected()+
+			this.hasPerformanceBoost.isSelected() + this.hasBoundingBox_WKT.isSelected();
+			return fingerprint;
+	}
+	
 	private void readInIFC() {
-
+		this.fingerprint=selections_fingerprint();
+		readInIFC_execute();
+	}
+	
+	
+	private void readInIFC_execute() {
 		this.prefs.putBoolean("lbd_building_elements", this.building_elements.isSelected());
 		this.prefs.putBoolean("lbd_building_elements_separate_file", this.building_elements_separate_file.isSelected());
 
@@ -408,6 +453,8 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		this.prefs.put("lbd_props_base_url", this.labelBaseURI.getText());
 
 		this.prefs.putBoolean("lbd_boundinbox_elements", this.geometry_elements.isSelected());
+		this.prefs.putBoolean("lbd_boundinbox_interfaces", this.geometry_interfaces.isSelected());
+
 		this.prefs.putBoolean("lbd_ifcOWL_elements", this.ifcOWL_elements.isSelected());
 		this.prefs.putBoolean("lbd_createUnits", this.createUnits.isSelected());
 
@@ -432,16 +479,30 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 					this.building_props_separate_file.isSelected(), this.building_props_blank_nodes.isSelected(),
 					this.geolocation.isSelected(), this.geometry_elements.isSelected(),
 					this.ifcOWL_elements.isSelected(), this.ifcOWL_elements.isSelected(),
-					this.hasPerformanceBoost.isSelected(), this.hasBoundingBox_WKT.isSelected()));
+					this.hasPerformanceBoost.isSelected(), this.hasBoundingBox_WKT.isSelected(),this.geometry_interfaces.isSelected()));
 		} catch (Exception e) {
 			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
 		}
-		this.options_panel.setDisable(true);
+		//this.options_panel.setDisable(true);
 
 	}
 
 	@FXML
 	private void convertIFCToRDF() {
+		
+		if(!this.fingerprint.equals(selections_fingerprint()))
+		{
+			try {
+				// Wait and run
+				this.running_read_in.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}	
+			Platform.runLater(() -> this.conversionTxt.appendText("Re-run the initial read"));
+			readInIFC_execute();
+		}
+		
+		
 		this.options_panel.setDisable(false);
 
 
@@ -455,6 +516,7 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		this.prefs.put("lbd_props_base_url", this.labelBaseURI.getText());
 
 		this.prefs.putBoolean("lbd_boundinbox_elements", this.geometry_elements.isSelected());
+		this.prefs.putBoolean("lbd_boundinbox_interfaces", this.geometry_interfaces.isSelected());
 		this.prefs.putBoolean("lbd_ifcOWL_elements", this.ifcOWL_elements.isSelected());
 		this.prefs.putBoolean("lbd_createUnits", this.createUnits.isSelected());
 		this.prefs.putBoolean("lbd_geolocation", this.geolocation.isSelected());
@@ -499,7 +561,7 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 					this.building_props.isSelected(), this.building_props_separate_file.isSelected(),
 					this.building_props_blank_nodes.isSelected(), this.geolocation.isSelected(), this.geometry_elements.isSelected(),
 					this.ifcOWL_elements.isSelected(), this.ifcOWL_elements.isSelected(), this.hasPerformanceBoost.isSelected(),
-					this.hasBoundingBox_WKT.isSelected(), this.hasHierarchicalNaming.isSelected(),this.ifc_based_elements .isSelected()));
+					this.hasBoundingBox_WKT.isSelected(), this.hasHierarchicalNaming.isSelected(),this.ifc_based_elements .isSelected(),this.geometry_interfaces.isSelected()));
 		} catch (Exception e) {
 			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
 		}
@@ -613,6 +675,7 @@ public class IFCtoLBDController implements Initializable, FxInterface {
 		this.building_props_separate_file.setSelected(this.prefs.getBoolean("lbd_building_props_separate_file", false));
 
 		this.geometry_elements.setSelected(this.prefs.getBoolean("lbd_boundinbox_elements", true));
+		this.geometry_interfaces.setSelected(this.prefs.getBoolean("lbd_boundinbox_interfaces", false));
 		this.ifcOWL_elements.setSelected(this.prefs.getBoolean("lbd_ifcOWL_elements", false));
 		this.createUnits.setSelected(this.prefs.getBoolean("lbd_createUnits", false));
 		this.geolocation.setSelected(this.prefs.getBoolean("lbd_geolocation", true));

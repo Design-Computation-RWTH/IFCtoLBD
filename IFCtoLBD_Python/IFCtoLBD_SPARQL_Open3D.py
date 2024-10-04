@@ -1,14 +1,12 @@
 # !/usr/bin/env python3
 #  To install:   pip install open3d
-
-
 #-------------------------------------------------------------------------------
 # Name:        lbd 3D visualization
 # Purpose:
 #
 # Author:      Jyrki Oraskari
 #
-# Created:     26/01/2024
+# Created:     20/09/2024
 # Copyright:   (c) Jyrki Oraskari 2024
 # Licence:     Apache 2.0
 #-------------------------------------------------------------------------------
@@ -18,21 +16,19 @@ import open3d as o3d
 import open3d.visualization as viss
 import base64
 import tempfile
-import jpype
 import numpy as np
-from open3d.cpu.pybind.visualization import MeshColorOption
 
 # Enable Java imports
 import jpype.imports
 
 # Pull in types
-from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
-from org.apache.jena.query import QueryFactory, QueryExecutionFactory
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+QueryFactory= jpype.JClass("org.apache.jena.query.QueryFactory")
+QueryExecutionFactory= jpype.JClass("org.apache.jena.query.QueryExecutionFactory")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 
 # Convert the IFC file into LBD, OPM level 1 model
@@ -40,13 +36,14 @@ lbdconverter = IFCtoLBDConverter("https://example.domain.de/",  1)
 props = ConversionProperties();
 props.setHasGeometry(True);
 
+
 model=lbdconverter.convert("Duplex_A_20110505.ifc",props)
 queryString = """PREFIX fog: <https://w3id.org/fog#>
 PREFIX beo: <https://pi.pauwel.be/voc/buildingelement#>
 PREFIX bot: <https://w3id.org/bot#>
 PREFIX ifc: <https://standards.buildingsmart.org/IFC/DEV/IFC2x3/TC1/OWL#>
 
-SELECT ?e ?wkt ?obj WHERE {
+SELECT ?e  ?obj WHERE {
   ?e <https://w3id.org/omg#hasGeometry> ?g .
   ?e a beo:Wall .\r
   ?g fog:asObj_v3.0-obj ?obj

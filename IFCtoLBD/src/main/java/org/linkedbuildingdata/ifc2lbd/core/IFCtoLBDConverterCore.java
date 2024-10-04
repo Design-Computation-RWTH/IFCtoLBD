@@ -30,6 +30,7 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.riot.RDFFormat;
 import org.apache.jena.vocabulary.OWL;
@@ -97,7 +98,7 @@ public abstract class IFCtoLBDConverterCore {
 	private Set<String> selected_types; // The element types that are included in the output
 
 	public Model ifcowl_model;
-	private Model ontology_model = null;
+	protected Model ontology_model = null;
 	protected Map<String, List<Resource>> ifcowl_product_map = new HashMap<>();
 	protected Optional<String> uriBase = Optional.empty();
 
@@ -116,16 +117,17 @@ public abstract class IFCtoLBDConverterCore {
 
 	protected IFCGeometry ifc_geometry = null;
 
-	private final Set<Resource> has_geometry = new HashSet<>();
+	protected final Set<Resource> has_geometry = new HashSet<>();
 
-	private RTree<Resource, Geometry> rtree;
-	private final Map<Rectangle, Resource> rtree_map = new HashMap<>();
+	protected RTree<Resource, Geometry> rtree;
+	protected RTree<Resource, Geometry> rtree_walls;
+	protected final Map<Rectangle, Resource> rtree_map = new HashMap<>();
 
 	private boolean exportIfcOWL_setting = false;
 	protected boolean hasBoundingBoxWKT = false;
 
 	private boolean hasHierarchicalNaming_setting = false;
-	private boolean hasSimplified_properties = false;
+	protected boolean hasSimplified_properties = false;
 
 	protected boolean hasNonLBDElement = true;
 
@@ -142,14 +144,17 @@ public abstract class IFCtoLBDConverterCore {
 	protected void conversion(String target_file, boolean hasBuildingElements, boolean hasSeparateBuildingElementsModel,
 			boolean hasBuildingProperties, boolean hasSeparatePropertiesModel, boolean hasGeolocation,
 			boolean hasGeometry, boolean exportIfcOWL, @SuppressWarnings("unused") boolean namedGraphs,
-			boolean hasHierarchicalNaming) {
+			boolean hasHierarchicalNaming, boolean hasInterfaces) {
 		this.handledAttributes4resource.clear(); // less performant but more dynamic
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("The LBD conversion starts"));
 		this.exportIfcOWL_setting = exportIfcOWL;
 		this.hasHierarchicalNaming_setting = hasHierarchicalNaming;
 		this.included_elements.clear();
 		if (hasGeometry)
+		{
 			this.rtree = RTree.dimensions(3).create();
+			this.rtree_walls = RTree.dimensions(3).create();
+		}
 
 		List<RDFNode> sites = IfcOWLUtils.listSites(this.ifcOWL, this.ifcowl_model);
 		if (!sites.isEmpty()) {
@@ -214,6 +219,11 @@ public abstract class IFCtoLBDConverterCore {
 				this.lbd_general_output_model.add(this.lbd_product_output_model);
 		}
 
+		if (hasGeometry)
+		{
+		   finish_geometry(hasInterfaces);
+		}
+		
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("Writing out the results."));
 
 		if (hasBuildingProperties) {
@@ -238,8 +248,8 @@ public abstract class IFCtoLBDConverterCore {
 				String target_trig = target_file.replaceAll(".ttl", ".trig");
 				if (this.uriBase.isPresent() && this.lbd_dataset != null) {
 					this.lbd_dataset.getDefaultModel().add(this.lbd_general_output_model);
-					this.lbd_dataset.addNamedModel(this.uriBase + "product", this.lbd_product_output_model);
-					this.lbd_dataset.addNamedModel(this.uriBase + "property", this.lbd_property_output_model);
+					this.lbd_dataset.addNamedModel(this.uriBase.get() + "product", this.lbd_product_output_model);
+					this.lbd_dataset.addNamedModel(this.uriBase.get() + "property", this.lbd_property_output_model);
 				}
 
 				RDFUtils.writeDataset(this.lbd_dataset, target_trig, this.eventBus);
@@ -404,6 +414,8 @@ public abstract class IFCtoLBDConverterCore {
 
 				Resource sp_geometry = this.lbd_general_output_model
 						.createResource(lbd_resource.getURI() + "_geometry");
+				
+				sp_geometry.addProperty(RDF.type, GEO.Geometry);
 				if (bb != null && obj != null)
 					lbd_resource.addProperty(OMG.hasGeometry, sp_geometry);
 				// lbd_resource.addProperty(GEO.hasGeometry, sp_geometry);
@@ -411,7 +423,8 @@ public abstract class IFCtoLBDConverterCore {
 					System.err.println("The elemenet has no geometry: " + lbd_resource.getURI());
 				if (bb != null) {
 					if (this.hasBoundingBoxWKT) {
-						sp_geometry.addLiteral(GEO.asWKT, bb.toString());
+						Literal wktLiteral=this.lbd_general_output_model.createTypedLiteral(bb.toString(),GEO.wktLiteral);
+						sp_geometry.addLiteral(GEO.asWKT, wktLiteral);
 					} else {
 						Resource sp_bb = this.lbd_general_output_model
 								.createResource(lbd_resource.getURI() + "_geometry_bb");
@@ -426,9 +439,32 @@ public abstract class IFCtoLBDConverterCore {
 					Rectangle rectangle = Rectangle.create(bb.getMin().x, bb.getMin().y, bb.getMin().z, bb.getMax().x,
 							bb.getMax().y, bb.getMax().z);
 
-					this.rtree = this.rtree.add(lbd_resource, rectangle); // rtree is
 					// immutable
+					this.rtree = this.rtree.add(lbd_resource, rectangle); // rtree is
 					this.rtree_map.put(rectangle, lbd_resource);
+
+					if (obj != null) {
+						if (this.fogasObj == null)
+							this.fogasObj = this.lbd_general_output_model
+									.createProperty("https://w3id.org/fog#asObj_v3.0-obj");
+						Literal base64 = this.lbd_general_output_model.createTypedLiteral(obj.toString(),
+								"https://www.w3.org/2001/XMLSchema#base64Binary");
+						sp_geometry.addLiteral(this.fogasObj, base64);
+					}
+					// TODO if not all is in place yet
+					if(lbd_resource.toString().toLowerCase().contains("furniture"))
+						return;
+					if(lbd_resource.toString().toLowerCase().contains("slab"))
+						return;
+					if(lbd_resource.toString().toLowerCase().contains("railing"))
+						return;				
+					if(lbd_resource.toString().toLowerCase().contains("beam"))
+						return;				
+					
+					if(lbd_resource.toString().toLowerCase().contains("stairflight"))
+						return;				
+					if(lbd_resource.toString().toLowerCase().contains("member"))
+						return;
 
 					Iterable<Entry<Resource, Geometry>> results = this.rtree.search(rectangle);
 					for (Entry<Resource, Geometry> e : results) {
@@ -436,16 +472,38 @@ public abstract class IFCtoLBDConverterCore {
 							e.value().addProperty(LBD.containsInBoundingBox, lbd_resource);
 					}
 
+					double x1 = bb.getMin().x, y1 = bb.getMin().y, z1 = bb.getMin().z;
+					double x2 = bb.getMax().x, y2 = bb.getMax().y, z2 = bb.getMax().z;
+
+					// Front Face
+					Rectangle frontFace = Rectangle.create(x1, y1, z1, x2, y2, z1);
+
+					// Back Face
+					Rectangle backFace = Rectangle.create(x1, y1, z2, x2, y2, z2);
+
+					// Left Face
+					Rectangle leftFace = Rectangle.create(x1, y1, z1, x1, y2, z2);
+
+					// Right Face
+					Rectangle rightFace = Rectangle.create(x2, y1, z1, x2, y2, z2);
+
+					// Top Face
+					Rectangle topFace = Rectangle.create(x1, y2, z1, x2, y2, z2);
+
+					// Bottom Face
+					Rectangle bottomFace = Rectangle.create(x1, y1, z1, x2, y1, z2);
+
+					
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, frontFace);
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, backFace);
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, leftFace);
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, rightFace);
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, topFace);
+					this.rtree_walls = this.rtree_walls.add(lbd_resource, bottomFace);
+
 				}
 
-				if (obj != null) {
-					if (this.fogasObj == null)
-						this.fogasObj = this.lbd_general_output_model
-								.createProperty("https://w3id.org/fog#asObj_v3.0-obj");
-					Literal base64 = this.lbd_general_output_model.createTypedLiteral(obj.toString(),
-							"https://www.w3.org/TR/xmlschema-2/#base64Binary");
-					sp_geometry.addLiteral(this.fogasObj, base64);
-				}
+				
 			}
 
 		} catch (Exception e) { // Just in case IFCOpenShell does not function
@@ -453,6 +511,53 @@ public abstract class IFCtoLBDConverterCore {
 			e.printStackTrace();
 		}
 
+	}
+
+	private void finish_geometry(boolean hasInterfaces) {
+		for (java.util.Map.Entry<Rectangle, Resource> entry : rtree_map.entrySet()) {
+			Resource lbd_resource = entry.getValue();
+			Rectangle rect_geometry = entry.getKey();
+			
+			Iterable<Entry<Resource, Geometry>> results = this.rtree.search(rect_geometry);
+			for (Entry<Resource, Geometry> e : results) {
+				Resource e_uri=e.value();
+				if (e_uri != lbd_resource)
+					lbd_resource.addProperty(LBD.containsInBoundingBox, e.value());
+			}
+
+			if(!hasInterfaces)
+				continue;
+			if(lbd_resource.toString().toLowerCase().contains("furniture"))
+				continue;
+			if(lbd_resource.toString().toLowerCase().contains("slab"))
+				continue;
+			if(lbd_resource.toString().toLowerCase().contains("railing"))
+				continue;				
+			if(lbd_resource.toString().toLowerCase().contains("beam"))
+				continue;				
+			
+			if(lbd_resource.toString().toLowerCase().contains("stairflight"))
+				continue;				
+			if(lbd_resource.toString().toLowerCase().contains("member"))
+				continue;
+			// Interfaces for the bounding boxes
+			//TODO 0.05  use model scale
+			Iterable<Entry<Resource, Geometry>> w_results = this.rtree_walls.search(rect_geometry,0.05);
+			for (Entry<Resource, Geometry> e : w_results) {
+				Resource e_uri=e.value();
+				
+
+				if (e_uri != lbd_resource)
+				{
+					Resource bot_interface = this.lbd_general_output_model
+							.createResource(lbd_resource.getURI() + "_interface_"+e.geometry().hashCode());
+					bot_interface.addProperty(RDF.type, BOT.bot_interface);
+					bot_interface.addProperty(BOT.bot_interfaceOf, e_uri);
+					bot_interface.addProperty(BOT.bot_interfaceOf, lbd_resource);  // Duplicates does not matter
+					
+				}
+			}
+		}
 	}
 
 	private final Map<String, String> unitmap = new HashMap<>();
@@ -626,14 +731,13 @@ public abstract class IFCtoLBDConverterCore {
 
 		IfcOWLUtils.listQuantitySets(this.ifcOWL, this.ifcowl_model).stream().map(RDFNode::asResource)
 				.forEach(quantityset -> {
-					System.out.println("Quantity set: " + quantityset);
+					// System.out.println("Quantity set: " + quantityset);
 					RDFStep[] qsname_path = { new RDFStep(this.ifcOWL.getName_IfcRoot()),
 							new RDFStep(IfcOWL.Express.getHasString()) };
-					
+
 					final List<RDFNode> quantityset_name = new ArrayList<>(
 							RDFUtils.pathQuery(quantityset, qsname_path)); // fine qset name
 
-					
 					PropertySet quantity_set = this.propertysets.get(quantityset.getURI());
 					if (quantity_set == null) {
 						if (!quantityset_name.isEmpty())
@@ -646,77 +750,77 @@ public abstract class IFCtoLBDConverterCore {
 									hasUnits);
 						this.propertysets.put(quantityset.getURI(), quantity_set);
 
-						
-					final PropertySet final_quantity_set = quantity_set;
-					RDFStep[] path = { new RDFStep(this.ifcOWL.getQuantities_IfcElementQuantity()) };
-					RDFUtils.pathQuery(quantityset, path).forEach(quantity -> {
-						System.out.println("quantity:" + quantity);
-						final List<String> name = new ArrayList<>();
-						quantity.asResource().listProperties().forEach(property_value -> {
-							
-							if (property_value.getPredicate().getLocalName().contains("name_")) {
-								System.out.println("name:" + property_value.getObject().asResource().getLocalName());
-								RDFStep[] qname_path = { new RDFStep(IfcOWL.Express.getHasString()) };
-								List<RDFNode> names = RDFUtils.pathQuery(property_value.getObject().asResource(),
-										qname_path);
-								if (names.size() > 0)
-									name.add(names.get(0).toString());
-							}
-						});
-							
-						quantity.asResource().listProperties().forEach(property_value -> {
-								
-							System.out.println("qname is: "+name+" val? :"+property_value.getPredicate().getLocalName());
-							if (!name.isEmpty() &&property_value.getPredicate().getLocalName().contains("Value_")) {
-								System.out.println("value:" + property_value.getObject().asResource().getLocalName());
+						final PropertySet final_quantity_set = quantity_set;
+						RDFStep[] path = { new RDFStep(this.ifcOWL.getQuantities_IfcElementQuantity()) };
+						RDFUtils.pathQuery(quantityset, path).forEach(quantity -> {
+							// System.out.println("quantity:" + quantity);
+							final List<String> name = new ArrayList<>();
+							quantity.asResource().listProperties().forEach(property_value -> {
 
-								RDFStep[] value_pathS = {
-										new RDFStep(IfcOWL.Express.getHasString()) };
-								final List<RDFNode> q_value = new ArrayList<>(
-										RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathS));
-
-								RDFStep[] value_pathD = {
-										new RDFStep(IfcOWL.Express.getHasDouble()) }; // xsd:decimal
-
-								RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathD)
-										.forEach(value -> {
-											if (value.asLiteral().getDatatypeURI().equals(XSD.xdouble.getURI()))
-												value = this.ifcowl_model.createTypedLiteral(
-														BigDecimal.valueOf(value.asLiteral().getDouble()),
-														XSD.decimal.getURI());
-											System.out.println("Double found for: "+property_value.getObject());
-											q_value.add(value);
-										}
-
-										);
-								
-								RDFStep[] value_pathI = { 
-										new RDFStep(IfcOWL.Express.getHasInteger()) };
-								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathI));
-
-								RDFStep[] value_pathB = { 
-										new RDFStep(IfcOWL.Express.getHasBoolean()) };
-								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathB));
-
-								RDFStep[] value_pathL = {
-										new RDFStep(IfcOWL.Express.getHasLogical()) };
-								q_value.addAll(RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathL));
-
-								if(!q_value.isEmpty())
-								{
-								   RDFNode qvalue = q_value.get(0);
-								   System.out.println("Add value: "+name+" val:"+qvalue);
-								   final_quantity_set.putPnameValue(name.get(0), qvalue);
+								if (property_value.getPredicate().getLocalName().contains("name_")) {
+									// System.out.println("name:" +
+									// property_value.getObject().asResource().getLocalName());
+									RDFStep[] qname_path = { new RDFStep(IfcOWL.Express.getHasString()) };
+									List<RDFNode> names = RDFUtils.pathQuery(property_value.getObject().asResource(),
+											qname_path);
+									if (names.size() > 0)
+										name.add(names.get(0).toString());
 								}
-								else
-									System.out.println("qval empty "+q_value+" for: "+property_value.getObject());
-							}
-							
-							
+							});
+
+							quantity.asResource().listProperties().forEach(property_value -> {
+
+								// System.out.println("qname is: "+name+" val?
+								// :"+property_value.getPredicate().getLocalName());
+								if (!name.isEmpty()
+										&& property_value.getPredicate().getLocalName().contains("Value_")) {
+									// System.out.println("value:" +
+									// property_value.getObject().asResource().getLocalName());
+
+									RDFStep[] value_pathS = { new RDFStep(IfcOWL.Express.getHasString()) };
+									final List<RDFNode> q_value = new ArrayList<>(
+											RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathS));
+
+									RDFStep[] value_pathD = { new RDFStep(IfcOWL.Express.getHasDouble()) }; // xsd:decimal
+
+									RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathD)
+											.forEach(value -> {
+												if (value.asLiteral().getDatatypeURI().equals(XSD.xdouble.getURI()))
+													value = this.ifcowl_model.createTypedLiteral(
+															BigDecimal.valueOf(value.asLiteral().getDouble()),
+															XSD.decimal.getURI());
+												// System.out.println("Double found for: "+property_value.getObject());
+												q_value.add(value);
+											}
+
+											);
+
+									RDFStep[] value_pathI = { new RDFStep(IfcOWL.Express.getHasInteger()) };
+									q_value.addAll(
+											RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathI));
+
+									RDFStep[] value_pathB = { new RDFStep(IfcOWL.Express.getHasBoolean()) };
+									q_value.addAll(
+											RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathB));
+
+									RDFStep[] value_pathL = { new RDFStep(IfcOWL.Express.getHasLogical()) };
+									q_value.addAll(
+											RDFUtils.pathQuery(property_value.getObject().asResource(), value_pathL));
+
+									if (!q_value.isEmpty()) {
+										RDFNode qvalue = q_value.get(0);
+										// System.out.println("Add value: "+name+" val:"+qvalue);
+										final_quantity_set.putPnameValue(name.get(0), qvalue);
+									} else
+										System.err.println(
+												"qval empty " + q_value + " for: " + property_value.getObject());
+								}
+
+							});
 						});
-					});
-				};
-	});
+					}
+					;
+				});
 		this.eventBus.post(new IFCtoLBD_SystemStatusEvent("LBD quantity sets read"));
 
 	}
@@ -1178,8 +1282,11 @@ public abstract class IFCtoLBDConverterCore {
 
 			this.eventBus.post(new IFCtoLBD_SystemStatusEvent("ifcOWL ready: reading in the model."));
 
-			File t2 = IfcOWLUtils.characterCoding(outputFile); // UTF-8 characters
-			RDFDataMgr.read(m, Objects.requireNonNullElse(t2, outputFile).getAbsolutePath());
+			//TODO  This does not work wit Apache Jena 5.1 (org.apache.jena.riot.RiotException: Out of place: [DOT])
+			//File t2 = IfcOWLUtils.characterCoding(outputFile); // UTF-8 characters
+			File t2=null;
+			System.out.println(Objects.requireNonNullElse(t2, outputFile).getAbsolutePath());
+			RDFDataMgr.read(m, Objects.requireNonNullElse(t2, outputFile).getAbsolutePath(),Lang.TTL);
 			return m;
 
 		} catch (Exception e) {
@@ -1285,7 +1392,18 @@ public abstract class IFCtoLBDConverterCore {
 	 * @param selected_types list of types
 	 */
 	public void setSelected_types(Set<String> selected_types) {
+		System.out.println(selected_types);
 		this.selected_types = selected_types;
+	}
+
+	public void setSelected_types(String selected_types_json) {
+		try {
+			Set<String> selected_psets = new ObjectMapper().readValue(selected_types_json, HashSet.class);
+
+			this.selected_types = selected_types;
+		} catch (JsonProcessingException e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -1464,6 +1582,10 @@ public abstract class IFCtoLBDConverterCore {
 		try {
 			Map<String, String> mapping = new ObjectMapper().readValue(property_replace_map_json, HashMap.class);
 			this.property_replace_map = mapping;
+
+			for (PropertySet pset : this.propertysets.values()) {
+				pset.setProperty_replace_map(mapping);
+			}
 		} catch (JsonProcessingException e) {
 			e.printStackTrace();
 		}

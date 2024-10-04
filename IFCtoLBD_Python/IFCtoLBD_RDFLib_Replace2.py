@@ -10,11 +10,10 @@ import jpype.imports
 # Pull in types
 from jpype.types import *
 
-jpype.startJVM(classpath = ['jars/*'])
+jpype.startJVM(classpath = ['./jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
-
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 #-------------------------------------------------------------------------------
 # Name:        RDFLib with property replacement

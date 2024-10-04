@@ -1,19 +1,24 @@
 # IFCtoLBD
-Version 2.43.5
+Version 2.44.0
 
-Contributors: Jyrki Oraskari, Mathias Bonduel, Kris McGlinn, Anna Wagner, Pieter Pauwels, Ville Kukkonen, Simon Steyskaland, Joel Lehtonen, Maxime Lefrançois, and Lewis John McGibbney.
+Contributors: Jyrki Oraskari, Mathias Bonduel, Kris McGlinn, Anna Wagner, Pieter Pauwels, Ville Kukkonen, Simon Steyskaland, Joel Lehtonen, Maxime Lefrançois, and Lewis John McGibbney. Thanks also to Vladimir Alexiev and Kathrin Dentler for their valuable comments.
 
 Free for all of us, forever.
 
-This repository presents the results of our ongoing work to create a usable converter to convert Industry Foundation Classes (IFC) STEP formatted files into 
-Resource Description Framework (RDF) triples that follow the small ontologies devised in  the  World Wide Web Consortium (W3C) Linked Building Data Community Group (W3C LBD-CG)
-(https://github.com/w3c-lbd-cg/).
+The IFCtoLBD converter transforms Industry Foundation Classes (IFC) files in STEP format into Resource Description Framework (RDF) triples. These RDF triples adhere to the ontologies created by the World Wide Web Consortium (W3C) Linked Building Data Community Group (W3C LBD-CG: https://github.com/w3c-lbd-cg/).
+
+### What is IFC?
+IFC is a vendor-neutral data format created by buildingSMART.  It helps different software in architecture, engineering, and construction (AEC) work together by sharing detailed information about building parts and their connections. You can find sample models here: [buildingSMART/Sample-Test-Files](https://github.com/buildingSMART/Sample-Test-Files/tree/master/IFC%202x3). Tools like Solibri Anywhere, BIMcollab ZOOM, FZKViewer, Tekla BIMsight, or BIM Vision can be used to view the files.
+
+### What is RDF?
+RDF is a web standard by the W3C. It organizes data into triples (subject, predicate, object) to make it easy to share and reuse information across different applications and combine large datasets from various sources.
+(see [Verborgh, The Semantic Web & Linked Data](https://rubenverborgh.github.io/WebFundamentals/semantic-web/))
 
 Proceedings of the 6th Linked Data in Architecture and Construction Workshop:
 [The IFC to Linked Building Data Converter - Current Status](http://ceur-ws.org/Vol-2159/04paper.pdf).
 
 It is recommended to use OpenJDK 21 (it is the modt current  Long-Term Support version). Java 17 is supported. OpenJava can be downloaded from  (https://docs.microsoft.com/en-us/java/openjdk/download).
-On a Windows system, download the MSI file that matches your processor type (usually x64 aka Intell), and run it to install Java.
+On a Windows system, download the MSI file that matches your processor type (usually x64 aka Intel), and run it to install Java.
 
 ## Precompiled binaries
 
@@ -41,11 +46,11 @@ If the program does not start, try the following command at the command line: `j
 Java programming examples can be found
 [here ](/IFCtoLBD/examples.md).
 
-The desktop user interface was written using Java FXML. The editor can be get from:
-https://gluonhq.com/products/scene-builder/ (You need to import the org.openjfx:javafx-graphics, and org.openjfx:javafx-controls with the library manager to get the editor working)
+The desktop user interface was created using Java FXML, a scripting language defining the user interface in Java applications. You can download the editor from Gluon Scene Builder (see https://gluonhq.com/products/scene-builder/). In the editor, import the org.openjfx:javafx-graphics and org.openjfx:javafx-controls libraries to get the editor working using the library manager.
+
 
 ## Compiling the code
-The converter can be compiled using maven and Java JDK (the above link). Maven can be downloaded from https://maven.apache.org/download.cgi.
+The converter can be compiled using Maven and the Java JDK. Maven is a build automation tool for managing a project’s build. You can download Maven from Apache Maven from https://maven.apache.org/download.cgi.
 
 First, make sure that the `JAVA_HOME` environment variable point to the JAVA JDK directory. JRE is not enough. Then run the following commands:
 
@@ -71,7 +76,20 @@ cd IFCtoLBD_OpenAPI
 call mvn clean install
 call mvn enunciate:docs install
 cd ..
+
 ```
+When done as shown above by using the command line, copy the files in your app folder  <app>  (can be any) and run the conversion.
+```
+copy  IFCtoRDF/target/ifc-to-lbd-*-jar-with-dependencies.jar <app>
+copy  IFCtoLBD_Geometry/target/ifc_to_lbd_geometry-*.jar <app>
+copy  IFCtoLBD/ifc-to-lbd-*-jar-with-dependencies.jar <app>
+copy  <your ifc> <app>
+cd <app>
+ 
+java -cp * org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter http://lbd.example.com/ <your ifc> output.ttl 2
+ 
+```
+
 -  Note: If you have problems compiling the sources, remove the module-info.java files (they expect to find the JAR files of the Maven-referred libraries of older Java versions). 
 
 OLD instruction was:
@@ -146,7 +164,7 @@ from jpype.types import *
 
 jpype.startJVM(classpath=['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
 
 # Convert the IFC file into LBD level 3 model
 lbdconverter = IFCtoLBDConverter("https://example.domain.de/", 3)
@@ -207,7 +225,7 @@ This project is released under the open source [Apache License, Version 2.0](htt
 
 ## How to cite
 ```
-@software{jyrki_oraskari_2023_7636217,
+@software{jyrki_oraskari_2024_7636217,
  author       = {Jyrki Oraskari and
                   Mathias Bonduel and
                   Kris McGlinn and
@@ -218,11 +236,11 @@ This project is released under the open source [Apache License, Version 2.0](htt
                   Simon Steyskaland and
                   Joel Lehtonen and
                   Maxime Lefrançois },
-  title        = {IFCtoLBD: IFCtoLBD v 2.43.3},
-  month        = jul,
-  year         = 2023,
+  title        = {IFCtoLBD: IFCtoLBD v 2.44.0},
+  month        = aug,
+  year         = 2024,
   publisher    = {GitHub},
-  version      = {2.43.3},
+  version      = {2.44.0},
   url          = {https://github.com/jyrkioraskari/IFCtoLBD}
 }
 
@@ -275,12 +293,40 @@ java  -jar IFCtoLBD_CLI.jar Duplex_A_20110907.ifc --level 1 --target_file output
 ```
 
 ## Blog
+### September 20, 2024
+I wrote a Python program to demonstrate how the interfaces can be used to infer which door to use to 
+enter a space. 
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Python/door_interface.png)
+
+The short example code can be found [here](/IFCtoLBD_Python/IFCtoLBD_SPARQL_Open3D_Interface.py).
+
+
+
+### September 19, 2024
+While it’s still in the preliminary stages and requires thorough testing, a source code for our bounding box-based interface generation is now available. 
+The code quality is being tested, and we are gearing up for the next pre-compiled release soon. If you encounter any bugs, please let me know.
+
+### March 14, 2024
+
+Just in case you have a path problem in a MacBook when writing Python: 
+-- It is recommended yo use absolute path names for the Java library files (macOS). You can use a text editor Search&Replace to fix there ysour configuration at the line of code:
+jpype.startJVM(classpath = ['...<the JAR files in your configuration>']).
+
+A short example code of relative names can be found [here](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Python/IFCtoLBD_RDFLibTurtle.py).
+
+
+### March 11, 2024
+The Python examples were rewritten so that the import error in some JPype versions should not appear.
+Also, instructions to copy the jars folder was added.
+
 ### February 21, 2024
 2D linegraph splits from the model 
 ![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD/Split_Demo.png)
 The short example code can be found [here](/IFCtoLBD/examples.md).
 
+The same with doors and windows, and, finally, spaces.
 
+![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD/Split_DemoSpaces3.png)
 ### January 30, 2024
 Simple graph plot with Python.  Source code is [here ](/IFCtoLBD_Python/examples.md).
 ![Screen](https://github.com/jyrkioraskari/IFCtoLBD/blob/master/IFCtoLBD_Python/graph_plot.png)
@@ -350,9 +396,10 @@ Testing the correctness of the created bounding boxes.
 
 ## Frequently asked questions
 
-1. What does it mean when IFCtoLBD says Java heap space?
+1. What does it mean when IFCtoLBD says “Java heap space”?
 
-   - The most probable situation for this is when a large file is converted. Try to start the program using `run.bat`. 
+    - This error typically occurs when converting a large file. It indicates the program has run out of memory allocated for the Java heap. To resolve this, try starting the program using run.bat
+
 
 2. Why does the program say: *"Error: Cannot determine which IFC version the model it is: [IFC2X2_FINAL]"*
 
@@ -384,9 +431,9 @@ Testing the correctness of the created bounding boxes.
    where *your java installation directory* is the base directory where your Java runtime is installed.
 
 6.  How to disable the missing project natures in Eclipse prompt
-  - open Eclipse.
-  - go to Window > Preferences.
-  - navigate to General > Project Natures.
+   - open Eclipse.
+   - go to Window > Preferences.
+   - navigate to General > Project Natures.
     There, you can disable the option for discovering missing project natures and marketplace entries.     
 
 7.  Eclipse build takes forever to complete

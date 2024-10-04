@@ -19,7 +19,7 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
 
 # Convert the IFC file into LBD level 3 model
 lbdconverter = IFCtoLBDConverter("https://example.domain.de/",  3)
@@ -59,9 +59,9 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.apache.jena.query import QueryFactory, QueryExecutionFactory
-
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+QueryFactory= jpype.JClass("org.apache.jena.query.QueryFactory")
+QueryExecutionFactory= jpype.JClass("org.apache.jena.query.QueryExecutionFactory")
 
 # Convert the IFC file into LBD, OPM level 1 model
 lbdconverter = IFCtoLBDConverter("https://example.domain.de/",  1)
@@ -105,9 +105,8 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
-
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 #-------------------------------------------------------------------------------
 # Name:        Direct access as Python objects
@@ -161,8 +160,8 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 
 #-------------------------------------------------------------------------------
@@ -219,8 +218,8 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 
 #-------------------------------------------------------------------------------
@@ -280,6 +279,7 @@ if jpype.isJVMStarted():
 # !/usr/bin/env python3
 #  To install:   pip install open3d
 
+
 #-------------------------------------------------------------------------------
 # Name:        lbd 3D visualization
 # Purpose:
@@ -308,9 +308,10 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
-from org.apache.jena.query import QueryFactory, QueryExecutionFactory
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+QueryFactory= jpype.JClass("org.apache.jena.query.QueryFactory")
+QueryExecutionFactory= jpype.JClass("org.apache.jena.query.QueryExecutionFactory")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 
 # Convert the IFC file into LBD, OPM level 1 model
@@ -326,6 +327,7 @@ PREFIX ifc: <https://standards.buildingsmart.org/IFC/DEV/IFC2x3/TC1/OWL#>
 
 SELECT ?e ?wkt ?obj WHERE {
   ?e <https://w3id.org/omg#hasGeometry> ?g .
+  ?e a beo:Wall .\r
   ?g fog:asObj_v3.0-obj ?obj
   FILTER NOT EXISTS {
     ?e a beo:Window .
@@ -364,9 +366,9 @@ while results.hasNext() :
         mesh = mesh + o3d.io.read_triangle_mesh(virtual_file.name,True,True)
     except NameError:
         mesh = o3d.io.read_triangle_mesh(virtual_file.name,True,True)
-
-R = np.array([[1, 0, 0], [0, 0, 1], [0, 1, 0]])
-mesh.rotate(R, center=(0, 0, 0)) # Switch y an z
+#R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+R = o3d.geometry.get_rotation_matrix_from_axis_angle([-np.pi / 2, 0, 0])
+mesh.rotate(R, center=(0, 0, 0))
 
 mesh.paint_uniform_color([1, 0.5, 0.5])
 mesh.compute_vertex_normals()
@@ -400,8 +402,8 @@ from jpype.types import *
 
 jpype.startJVM(classpath = ['jars/*'])
 
-from org.linkedbuildingdata.ifc2lbd import IFCtoLBDConverter
-from org.linkedbuildingdata.ifc2lbd import ConversionProperties
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
 
 import io
 import numpy as np
@@ -452,3 +454,78 @@ img_array = np.array(img_pil)
 plt.imshow(img_array)
 plt.show()
 ```
+
+
+### How to select element types and conversion parameters
+
+```
+# !/usr/bin/env python3
+
+import jpype
+from rdflib import Graph
+import json
+# Enable Java imports
+import jpype.imports
+# Pull in types
+from jpype.types import *
+
+jpype.startJVM(classpath = ['jars/*'])
+
+IFCtoLBDConverter = jpype.JClass("org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter")
+ConversionProperties = jpype.JClass("org.linkedbuildingdata.ifc2lbd.ConversionProperties")
+
+#-------------------------------------------------------------------------------
+# Name:        RDFLib access
+# Purpose:
+#
+# Author:      Jyrki Oraskari
+#
+# Created:     13/03/2024
+# Copyright:   (c) Jyrki Oraskari 2024
+# Licence:     Apache 2.0
+#-------------------------------------------------------------------------------
+
+# ConversionProperties:
+# setHasBuildingElements(boolean)             	If set False, no building elements are included
+# setHasSeparateBuildingElementsModel(boolean)  If True, a separate file for the building elements is created
+# setHasBuildingProperties(boolean)      	If false, property sets are not included
+# setHasSeparatePropertiesModel(boolean)  If true, properties are written into a separate file
+# setHasGeolocation(boolean)    		If geolocation is included
+# setHasGeometry(boolean)       		If geometry is included
+# setExportIfcOWL(boolean)       		If the BOT elements are linked with ifcOWL elements and ifcOWL graph is created into a separate file
+# setHasUnits(boolean)                	If the units for the values are included  (Level 2 ja Level 3 )
+# setHasBoundingBoxWKT(boolean)		If the bounding boxes of the element are expressed as Well Known Text
+# setHasHierarchicalNaming(boolean)		Affects how the URLs are formed
+# setHasPerformanceBoost(boolean)		If set True, the converter tries to use conversion results of previous conversions and  filters out 
+#  							data that is not used in the calculation later
+props = ConversionProperties()
+props.setHasGeometry(True)
+props.setExportIfcOWL(False)
+props.setHasPerformanceBoost(False)
+
+# Convert the IFC file into LBD, OPM level 1 model
+lbdconverter = IFCtoLBDConverter("https://www.econom.one/",  1)
+
+selected_types = "[\"Beam\", \"Wall\", \"Member\", \"Slab\", \"Stair\", \"Railing\"]"
+lbdconverter.setSelected_types(selected_types)		# Exported elements can be selected using the JSON list syntax.
+
+lbdconverter.setHasSimplified_properties(True)		# More clear naming,  but not recommended if rules or inferencing models are used (OWL full)
+lbdconverter.setHasNonLBDElement(False)			#  Filters out IFC elements not specified in Linked Building Data ontologies.
+
+# Model to be read and selected properties
+lbdconverter.convert("AC20-FZK-Haus.ifc",props)
+
+lbd_jsonld = str(lbdconverter.getJSONLD())
+g = Graph()
+g.parse(data=json.loads(lbd_jsonld), format='json-ld')
+
+#  Lists the triples:
+print(g.serialize(format="turtle"))
+
+jpype.shutdownJVM()
+
+```
+
+
+
+
