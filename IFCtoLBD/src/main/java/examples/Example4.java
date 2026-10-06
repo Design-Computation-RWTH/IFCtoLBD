@@ -51,7 +51,7 @@ public class Example4 {
                             
                             SELECT ?e ?wkt ?obj WHERE {
                               ?e <https://w3id.org/omg#hasGeometry> ?g .
-                              ?g <https://www.opengis.net/ont/geosparql#asWKT> ?wkt .
+                              ?g <http://www.opengis.net/ont/geosparql#asWKT> ?wkt .
                               ?g fog:asObj_v3.0-obj ?obj 
                             }""");
                     

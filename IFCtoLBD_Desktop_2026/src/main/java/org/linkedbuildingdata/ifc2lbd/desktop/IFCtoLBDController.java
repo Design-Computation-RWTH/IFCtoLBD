@@ -1,0 +1,2850 @@
+
+/*
+ *  Copyright (c) 2017,2023, 2024, 2025 Jyrki Oraskari (Jyrki.Oraskari@gmail.f)
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+   Royalty Free Stock Image: Blue Glass web icons, buttons
+   The File image is implemented using:
+   http://www.dreamstime.com/royalty-free-stock-image-blue-glass-web-icons-buttons-image8270526
+ */
+
+package org.linkedbuildingdata.ifc2lbd.desktop;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.prefs.Preferences;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.jena.graph.Graph;
+import org.apache.jena.query.Query;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.QueryFactory;
+import org.apache.jena.query.QuerySolution;
+import org.apache.jena.query.ResultSet;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.riot.Lang;
+import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.riot.RDFLanguages;
+import org.apache.jena.shacl.ShaclValidator;
+import org.apache.jena.shacl.Shapes;
+import org.apache.jena.shacl.ValidationReport;
+import org.apache.jena.shacl.parser.Shape;
+import org.apache.jena.shacl.validation.ReportEntry;
+import org.controlsfx.control.CheckTreeView;
+import org.controlsfx.control.ToggleSwitch;
+import org.controlsfx.control.textfield.CustomTextField;
+import org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter;
+import org.linkedbuildingdata.ifc2lbd.application_messaging.IFC2LBD_ApplicationEventBusService;
+import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemErrorEvent;
+import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemExit;
+import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemStatusEvent;
+import org.linkedbuildingdata.ifc2lbd.messages.ProcessReadyEvent;
+
+import com.google.common.eventbus.EventBus;
+import com.google.common.eventbus.Subscribe;
+
+import javafx.animation.Interpolator;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Pos;
+import javafx.geometry.Point2D;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBoxTreeItem;
+import javafx.scene.control.ChoiceBox;
+import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.Hyperlink;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
+import javafx.scene.control.Tooltip;
+import javafx.scene.control.TreeItem;
+import javafx.scene.AmbientLight;
+import javafx.scene.DepthTest;
+import javafx.scene.DirectionalLight;
+import javafx.scene.Group;
+import javafx.scene.Node;
+import javafx.scene.PerspectiveCamera;
+import javafx.scene.SceneAntialiasing;
+import javafx.scene.SubScene;
+import javafx.scene.input.DragEvent;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.TransferMode;
+import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.PhongMaterial;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.shape.CullFace;
+import javafx.scene.shape.DrawMode;
+import javafx.scene.shape.MeshView;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.TriangleMesh;
+import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Translate;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+import javafx.util.Duration;
+
+/*
+ 
+Main Components
+- Event Handling: Uses Google Guava's EventBus for handling application events.
+- File Handling: Uses FileChooser for selecting IFC and target RDF files.
+
+- Conversion Process
+  -- Reads IFC files.
+  -- Converts them to RDF format.
+
+Methods
+- initialize(): Initializes the UI components and sets up event handlers.
+- selectIFCFile(): Handles the selection of IFC files.
+- selectTargetFile(): Handles the selection of target RDF files.
+- convertIFCToRDF(): Initiates the conversion process.
+- readInIFC(): Reads the IFC file and prepares for conversion.
+- handle_notification(), handleEvent(): Methods to handle various events and update the UI accordingly.
+ 
+ */
+
+public class IFCtoLBDController implements Initializable, FxInterface {
+	private Preferences prefs = Preferences.userNodeForPackage(IFCtoLBDController.class);
+
+	private final EventBus eventBus = IFC2LBD_ApplicationEventBusService.getDefaultEventBus();
+	private ExecutorService executor = Executors.newFixedThreadPool(1);
+
+	@FXML
+	private AnchorPane root;
+	@FXML
+	private Rectangle border;
+
+	@FXML
+	MenuBar myMenuBar;
+
+	@FXML
+	private ToggleSwitch building_elements;
+	@FXML
+	private Hyperlink elements_link;
+
+	@FXML
+	private ToggleSwitch building_elements_separate_file;
+
+	@FXML
+	private ToggleSwitch geolocation;
+
+	@FXML
+	private ToggleSwitch building_props;
+
+	@FXML
+	private Hyperlink props_link;
+
+	@FXML
+	private ToggleSwitch building_props_blank_nodes;
+	@FXML
+	private ToggleSwitch building_props_separate_file;
+
+	@FXML
+	private RadioButton level1;
+	@FXML
+	private RadioButton level2;
+	@FXML
+	private RadioButton level3;
+
+	@FXML
+	private Hyperlink opm_link;
+
+	@FXML
+	private Button selectIFCFileButton;
+
+	@FXML
+	private Label labelIFCFile;
+
+	@FXML
+	private Button basicSelectIFCFileButton;
+
+	@FXML
+	private Label basicLabelIFCFile;
+
+	@FXML
+	private Button selectTargetFileButton;
+
+	@FXML
+	private TextField labelTargetFile;
+
+	@FXML
+	private Button convert2RDFButton;
+
+	@FXML
+	private Button basicConvert2RDFButton;
+
+	@FXML
+	private TextArea conversionTxt;
+
+	@FXML
+	private Button filtersWorkflowButton;
+
+	@FXML
+	private Button geometryWorkflowButton;
+
+	@FXML
+	private Button validateWorkflowButton;
+
+	@FXML
+	private Button queryWorkflowButton;
+
+	@FXML
+	private Button copyCommandLineButton;
+
+	@FXML
+	private TitledPane sparqlQueryCard;
+
+	@FXML
+	private TitledPane validateCard;
+
+	@FXML
+	private Button loadShaclButton;
+
+	@FXML
+	private Label validateStatusLabel;
+
+	@FXML
+	private ListView<ShapeValidationItem> shaclShapesList;
+
+	@FXML
+	private TextArea sparqlEditorTxt;
+
+	@FXML
+	private TextArea sparqlResultsTxt;
+
+	@FXML
+	private Button runSparqlQueryButton;
+
+	@FXML
+	private StackPane geometryViewport;
+
+	@FXML
+	private AnchorPane floatingWorkspace;
+
+	@FXML
+	private TitledPane filtersCard;
+
+	@FXML
+	private TitledPane geometryCard;
+
+	@FXML
+	private CustomTextField labelBaseURI;
+
+	FileChooser fc_ifc;
+	FileChooser fc_target;
+
+	@FXML
+	private ToggleSwitch geometry_elements;
+
+	@FXML
+	private ToggleSwitch geometry_interfaces;
+
+	
+	@FXML
+	private ToggleSwitch hasBoundingBox_WKT;
+
+	@FXML
+	private ToggleSwitch hasElementWireframe;
+
+	@FXML
+	private ToggleSwitch ifcOWL_elements;
+
+	@FXML
+	private ToggleSwitch hasPerformanceBoost;
+
+	@FXML
+	private ToggleSwitch createUnits;
+
+	@FXML
+	private CheckTreeView<String> element_types_checkbox;
+	
+	@FXML
+	private CheckTreeView<String> propertysets_checkbox;
+	
+
+	@FXML
+	private ToggleSwitch hasHierarchicalNaming;
+
+	
+	@FXML
+	private ToggleSwitch hasSimpleProperties;
+
+	@FXML
+	private ToggleSwitch propertiesAsPropertySets;
+
+	@FXML
+	private ToggleSwitch ifc_based_elements;
+	
+	
+	@FXML
+	private ToggleSwitch 	createTrig;
+	
+	@FXML
+	private TitledPane options_panel;
+	
+	
+	@FXML
+	private ChoiceBox<String> outputJSONorTTL;
+
+	@FXML
+	private ChoiceBox<String> basicOutputJSONorTTL;
+
+	private ConversionSettings readInSettings;
+
+	private record ConversionSettings(String ifcFileName, String rdfTargetName, String baseUri, int propsLevel,
+			boolean hasBuildingElements, boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties,
+			boolean hasSeparatePropertiesModel, boolean hasPropertiesBlankNodes, boolean hasGeolocation,
+			boolean hasGeometry, boolean exportIfcOwl, boolean hasPerformanceBoost, boolean hasBoundingBoxWkt,
+			boolean hasInterfaces, boolean hasElementWireframe, boolean hasUnits, boolean hasHierarchicalNaming,
+			boolean hasSimpleProperties, boolean propertiesAsPropertySets, boolean hasIfcBasedElements,
+			boolean createTrig, boolean exportAsJsonLd, boolean exportAsIcdd) {
+	}
+
+	private record ConversionRequest(ConversionSettings settings, Set<String> selectedTypes, Set<String> selectedPsets) {
+	}
+
+	private ConversionRequest lastSuccessfulConversionRequest;
+	private ConversionRequest pendingConversionRequest;
+	private SubScene geometryScene;
+	private Group geometrySceneRoot;
+	private Group geometryModelRoot;
+	private PerspectiveCamera geometryCamera;
+	private final Rotate geometryRotateX = new Rotate(-25, Rotate.X_AXIS);
+	private final Rotate geometryRotateY = new Rotate(-35, Rotate.Y_AXIS);
+	private final Translate geometryCameraDistance = new Translate(0, 0, -760);
+	private PreviewMesh currentPreviewMesh;
+	private boolean queryDataAvailable;
+	private long outputRevision;
+	private long validationRevision;
+	private boolean sparqlCardPositioned;
+	private final List<LoadedShapes> loadedShapes = new ArrayList<>();
+	private final ObservableList<ShapeValidationItem> shapeValidationItems = FXCollections.observableArrayList();
+	private double geometryMouseX;
+	private double geometryMouseY;
+	private double geometryZoom = 1.0;
+	private boolean geometryPanning;
+	private double floatingMouseX;
+	private double floatingMouseY;
+	private double floatingCardX;
+	private double floatingCardY;
+	private Button pressedFloatingWindowButton;
+	private final Map<Button, Runnable> floatingWindowButtonActions = new IdentityHashMap<>();
+	private final Map<Button, TitledPane> floatingWindowButtonCards = new IdentityHashMap<>();
+	private final Map<TitledPane, Double> floatingCardNormalHeights = new IdentityHashMap<>();
+	private final Map<TitledPane, Timeline> floatingCardAnimations = new IdentityHashMap<>();
+
+	private static final int MAX_PREVIEW_POINTS = 220_000;
+	private static final int MAX_PREVIEW_TRIANGLES = 60_000;
+	private static final double FLOATING_CARD_HEADER_HEIGHT = 38.0;
+	private static final double FLOATING_CARD_WINDOW_BUTTON_WIDTH = 24.0;
+	private static final double FLOATING_CARD_WINDOW_BUTTON_HEIGHT = 22.0;
+	private static final double FLOATING_CARD_INITIAL_X = 14.0;
+	private static final double FLOATING_CARD_INITIAL_Y = 14.0;
+	private static final double FLOATING_CARD_INITIAL_GAP = 12.0;
+	private static final double GEOMETRY_CARD_WIDTH = 560.0;
+	private static final double GEOMETRY_VIEWPORT_WIDTH = 540.0;
+	private static final String GEOMETRY_OBJ_PROPERTY = "https://w3id.org/fog#asObj_v3.0-obj";
+	private static final String GEOMETRY_MTL_PROPERTY = "https://lbd.org/#asMTL";
+	private static final String GEOMETRY_MTL_KD_PROPERTY = "https://lbd.org/#asMTL_kd";
+	private static final Pattern MTL_KD_LINE_PATTERN = Pattern.compile(
+			"(?m)^\\s*Kd\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*$");
+	private static final int DEFAULT_PREVIEW_COLOR = 0x9aa8b8;
+	private static final int MAX_SPARQL_RESULT_ROWS = 1_000;
+	private static final String DEFAULT_SHACL_RESOURCE = "SHACL_rulesetLevel1.ttl";
+	private static final String DEFAULT_SPARQL_QUERY = """
+			PREFIX bot: <https://w3id.org/bot#>
+
+			SELECT ?element WHERE {
+			  ?element a bot:Element .
+			}
+			LIMIT 100
+			""";
+
+	private record LoadedShapes(File file, String name, Shapes shapes, List<ShapeValidationItem> items) {
+	}
+
+	private record ShapeValidationResult(ShapeValidationItem item, Boolean conforms, String message) {
+	}
+
+	private static final class ShapeValidationItem {
+		private final String sourceName;
+		private final String displayName;
+		private final org.apache.jena.graph.Node shapeNode;
+		private final Set<org.apache.jena.graph.Node> constraintNodes;
+		private Boolean conforms;
+		private String message;
+
+		private ShapeValidationItem(String sourceName, String displayName, org.apache.jena.graph.Node shapeNode,
+				Set<org.apache.jena.graph.Node> constraintNodes) {
+			this.sourceName = sourceName;
+			this.displayName = displayName;
+			this.shapeNode = shapeNode;
+			this.constraintNodes = constraintNodes;
+			this.message = "Not tested yet";
+		}
+	}
+
+	@FXML
+	private void closeApplicationAction() {
+		this.eventBus.post(new IFCtoLBD_SystemExit("User selected the application exit."));
+		Platform.exit();
+	}
+
+	@FXML
+	private void aboutAction() {
+		// get a handle to the stage
+		Stage stage = (Stage) this.myMenuBar.getScene().getWindow();
+		new About(stage).show();
+	}
+
+	@FXML
+	private void openSettingsWorkflow() {
+		toggleFloatingCard(this.options_panel);
+	}
+
+	@FXML
+	private void openFiltersWorkflow() {
+		if (!isFiltersAvailable()) {
+			this.conversionTxt.appendText("Read an IFC file before opening Filters.\n");
+			return;
+		}
+		toggleFloatingCard(this.filtersCard);
+	}
+
+	@FXML
+	private void testGeometryWorkflow() {
+		if (!isGeometryPreviewAvailable()) {
+			this.conversionTxt.appendText("Run a conversion before opening Geometry Preview.\n");
+			return;
+		}
+		toggleFloatingCard(this.geometryCard);
+	}
+
+	@FXML
+	private void validateWorkflow() {
+		if (!isValidationAvailable()) {
+			this.conversionTxt.appendText("Generate an RDF output before opening Validate.\n");
+			return;
+		}
+		alignFloatingCardsIfNeeded();
+		toggleFloatingCard(this.validateCard);
+		validateLoadedShapesAsync();
+	}
+
+	@FXML
+	private void loadShaclShapes() {
+		FileChooser fileChooser = new FileChooser();
+		fileChooser.setTitle("Load SHACL shapes");
+		fileChooser.getExtensionFilters().addAll(new FileChooser.ExtensionFilter("Turtle files (*.ttl)", "*.ttl"),
+				new FileChooser.ExtensionFilter("All Files", "*.*"));
+		File selectedFile = fileChooser.showOpenDialog(this.root.getScene().getWindow());
+		if (selectedFile != null) {
+			loadShapesFileAsync(selectedFile, selectedFile.getName());
+		}
+	}
+
+	@FXML
+	private void restoreDefaultShaclShapes() {
+		this.loadedShapes.clear();
+		this.shapeValidationItems.clear();
+		loadDefaultShapes();
+		if (this.shaclShapesList != null) {
+			this.shaclShapesList.refresh();
+		}
+		if (isValidationAvailable()) {
+			validateLoadedShapesAsync();
+		}
+	}
+
+	@FXML
+	private void queryWorkflow() {
+		if (!isSparqlQueryAvailable()) {
+			this.conversionTxt.appendText("Generate an RDF output before opening SPARQL Query.\n");
+			return;
+		}
+		alignFloatingCardsIfNeeded();
+		toggleFloatingCard(this.sparqlQueryCard);
+	}
+
+	@FXML
+	private void runSparqlQuery() {
+		if (!isSparqlQueryAvailable()) {
+			this.sparqlResultsTxt.setText("Generate an RDF output before running a SPARQL query.");
+			return;
+		}
+		String queryText = this.sparqlEditorTxt.getText();
+		if (queryText == null || queryText.isBlank()) {
+			this.sparqlResultsTxt.setText("Enter a SPARQL query.");
+			return;
+		}
+		this.runSparqlQueryButton.setDisable(true);
+		this.sparqlResultsTxt.setText("Running query...");
+		long revision = this.outputRevision;
+		File outputFile = new File(this.lastSuccessfulConversionRequest.settings().rdfTargetName());
+		this.executor.submit(() -> {
+			Model model = null;
+			try {
+				model = readOutputModel(outputFile);
+				String output = executeSparqlQuery(model, queryText);
+				Platform.runLater(() -> {
+					if (revision == this.outputRevision) this.sparqlResultsTxt.setText(output);
+				});
+			} catch (Exception e) {
+				Platform.runLater(() -> {
+					if (revision == this.outputRevision)
+						this.sparqlResultsTxt.setText("SPARQL query failed: " + e.getMessage());
+				});
+			} finally {
+				if (model != null) model.close();
+				Platform.runLater(() -> {
+					if (revision == this.outputRevision)
+						this.runSparqlQueryButton.setDisable(!isSparqlQueryAvailable());
+				});
+			}
+		});
+	}
+
+	@FXML
+	public void hyperlink_product_handle(ActionEvent event) {
+		try {
+			URI u = new URI("https://github.com/w3c-lbd-cg/product");
+			java.awt.Desktop.getDesktop().browse(u);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (URISyntaxException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@FXML
+	public void hyperlink_opm_handle(ActionEvent event) {
+		try {
+			URI u = new URI("https://github.com/w3c-lbd-cg/opm");
+			java.awt.Desktop.getDesktop().browse(u);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (URISyntaxException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@FXML
+	public void hyperlink_towards_props(ActionEvent event) {
+		try {
+			URI u = new URI(
+					"https://github.com/w3c-lbd-cg/lbd/blob/gh-pages/presentations/props/presentation_LBDcall_20180312_final.pdf");
+			java.awt.Desktop.getDesktop().browse(u);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (URISyntaxException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@FXML
+	public void ifcOWLSelectionChange(MouseEvent event) {
+		if (this.ifcOWL_elements.isSelected()) {
+			this.hasPerformanceBoost.setSelected(false);
+			this.hasPerformanceBoost.setDisable(true);
+		} else {
+			this.hasPerformanceBoost.setDisable(false);
+		}
+
+	}
+
+
+	private String ifcFileName = null;
+	private String rdfTargetName = null;
+
+	@FXML
+	private void selectIFCFile() {
+		Stage stage = (Stage) this.myMenuBar.getScene().getWindow();
+		File file = null;
+
+		if (this.fc_ifc == null) {
+			this.fc_ifc = new FileChooser();
+			String work_directory = this.prefs.get("ifc_work_directory", ".");
+			System.out.println("workdir got:" + work_directory);
+			File fwd = new File(work_directory);
+			if (fwd.exists()) {
+				this.fc_ifc.setInitialDirectory(fwd.isDirectory() ? fwd : fwd.getParentFile());
+			} else {
+				this.fc_ifc.setInitialDirectory(new File("."));
+			}
+		}
+		FileChooser.ExtensionFilter ef1;
+		ef1 = new FileChooser.ExtensionFilter("IFC documents (*.ifc, *.ifcxml, *.ifcjson)", "*.ifc", "*.ifcxml", "*.ifcjson", "*.xml", "*.json");
+		FileChooser.ExtensionFilter ef2;
+		ef2 = new FileChooser.ExtensionFilter("IFC zip documents (*.ifczip)", "*.ifczip");
+		FileChooser.ExtensionFilter ef3;
+		ef3 = new FileChooser.ExtensionFilter("All Files", "*.*");
+		this.fc_ifc.getExtensionFilters().clear();
+		this.fc_ifc.getExtensionFilters().addAll(ef1, ef2, ef3);
+
+		file = this.fc_ifc.showOpenDialog(stage);
+		if (file == null)
+			return;
+		this.fc_ifc.setInitialDirectory(file.getParentFile());
+		setIfcFileLabel(file.getName());
+		this.ifcFileName = file.getAbsolutePath();
+		int i = file.getName().lastIndexOf(".");
+		if (i > 0) {
+			String target_directory = this.prefs.get("ifc_target_directory", file.getParentFile().getAbsolutePath());
+			if (!new File(target_directory).exists())
+				target_directory = file.getParent();
+			if (target_directory.endsWith("\\"))
+				this.rdfTargetName = target_directory + file.getName().substring(0, i) + "_LBD"
+						+ selectedOutputExtension();
+			else
+				this.rdfTargetName = target_directory + File.separator + file.getName().substring(0, i) + "_LBD"
+						+ selectedOutputExtension();
+			setTargetFileLabel(this.rdfTargetName);
+		}
+		if (this.ifcFileName != null && this.rdfTargetName != null) {
+			this.selectTargetFileButton.setDisable(false);
+			System.out.println("workdir put:" + file.getParentFile().getAbsolutePath());
+			this.prefs.put("ifc_work_directory", file.getParentFile().getAbsolutePath());
+			readInIFC();
+		}
+		setSelectIfcDefault(false);
+	}
+
+	/*
+	 * These forces the user interface to be coherent as the Toggle Grpup does not
+	 * work
+	 */
+
+	@FXML
+	private void selectPropertyLevel1() {
+		this.level1.setSelected(true);
+		this.level2.setSelected(false);
+		this.level3.setSelected(false);
+	}
+
+	@FXML
+	private void selectPropertyLevel2() {
+		this.level1.setSelected(false);
+		this.level2.setSelected(true);
+		this.level3.setSelected(false);
+	}
+
+	@FXML
+	private void selectPropertyLevel3() {
+		this.level1.setSelected(false);
+		this.level2.setSelected(false);
+		this.level3.setSelected(true);
+
+	}
+
+	@FXML
+	private void selectTargetFile() {
+		Stage stage = (Stage) this.myMenuBar.getScene().getWindow();
+		File file = null;
+
+		this.fc_target = new FileChooser();
+		File fwd = new File(this.rdfTargetName);
+		this.fc_target.setInitialFileName(fwd.getName());
+		if (fwd.getParentFile() == null || !fwd.getParentFile().exists()) {
+			this.fc_target.setInitialDirectory(new File(this.ifcFileName).getParentFile());
+			System.out.println("Initial Filename to: " + fwd.getName());
+			this.fc_target.setInitialFileName(fwd.getName());
+			System.out.println("SET");
+		} else
+			this.fc_target.setInitialDirectory(fwd.getParentFile());
+
+		FileChooser.ExtensionFilter ttlFilter = new FileChooser.ExtensionFilter("Turtle files (*.ttl)", "*.ttl");
+		FileChooser.ExtensionFilter jsonLdFilter = new FileChooser.ExtensionFilter("JSON-LD files (*.jsonld)", "*.jsonld");
+		FileChooser.ExtensionFilter icddFilter = new FileChooser.ExtensionFilter("ICDD packages (*.icdd)", "*.icdd");
+		this.fc_target.getExtensionFilters().clear();
+		this.fc_target.getExtensionFilters().addAll(ttlFilter, jsonLdFilter, icddFilter);
+		this.fc_target.setSelectedExtensionFilter(
+				isIcddOutputSelected() ? icddFilter : isJsonLdOutputSelected() ? jsonLdFilter : ttlFilter);
+
+		try {
+			file = this.fc_target.showSaveDialog(stage);
+		} catch (Exception e) {
+			fwd = new File(this.rdfTargetName);
+			System.err.println(
+					"fwd parent: " + fwd.getParentFile() + " -> " + new File(this.ifcFileName).getParentFile());
+			System.err.println("path was: " + this.fc_target.getInitialDirectory().getAbsolutePath());
+
+			e.printStackTrace();
+		}
+		if (file == null)
+			return;
+		this.fc_target.setInitialDirectory(file.getParentFile());
+		this.prefs.put("ifc_target_directory", file.getParentFile().getAbsolutePath());
+		setTargetFileLabel(file.getAbsolutePath());
+
+		this.rdfTargetName = file.getAbsolutePath();
+	}
+
+	Future<IFCtoLBDConverter> running_read_in;
+	Future<Integer> running_conversion;
+
+	private int selectedPropertyLevel() {
+		if (this.level1.isSelected()) {
+			return 1;
+		}
+		if (this.level3.isSelected()) {
+			return 3;
+		}
+		return 2;
+	}
+
+	private boolean isJsonLdOutputSelected() {
+		String outputFormat = this.outputJSONorTTL.getValue();
+		return outputFormat != null && outputFormat.toLowerCase(Locale.ROOT).contains("json");
+	}
+
+	private boolean isIcddOutputSelected() {
+		String outputFormat = this.outputJSONorTTL.getValue();
+		return outputFormat != null && outputFormat.toUpperCase(Locale.ROOT).contains("ICDD");
+	}
+
+	private String selectedOutputExtension() {
+		if (isIcddOutputSelected()) return ".icdd";
+		return isJsonLdOutputSelected() ? ".jsonld" : ".ttl";
+	}
+
+	private void updateTargetFileExtension() {
+		if (this.rdfTargetName == null) {
+			return;
+		}
+		String extension = selectedOutputExtension();
+		int separatorIndex = Math.max(this.rdfTargetName.lastIndexOf(File.separatorChar), this.rdfTargetName.lastIndexOf('/'));
+		int dotIndex = this.rdfTargetName.lastIndexOf('.');
+		if (dotIndex > separatorIndex) {
+			this.rdfTargetName = this.rdfTargetName.substring(0, dotIndex) + extension;
+		} else {
+			this.rdfTargetName = this.rdfTargetName + extension;
+		}
+		setTargetFileLabel(this.rdfTargetName);
+		setSparqlQueryAvailable(isSparqlQueryAvailable());
+	}
+
+	private ConversionSettings currentSettings() {
+		String baseUri = this.labelBaseURI.getText().trim();
+		if (baseUri.isEmpty()) {
+			baseUri = IFCtoLBDConverter.DEFAULT_BASE_URI;
+		}
+		return new ConversionSettings(this.ifcFileName, this.rdfTargetName, baseUri,
+				selectedPropertyLevel(), this.building_elements.isSelected(),
+				this.building_elements_separate_file.isSelected(), this.building_props.isSelected(),
+				this.building_props_separate_file.isSelected(), this.building_props_blank_nodes.isSelected(),
+				this.geolocation.isSelected(), this.geometry_elements.isSelected(), this.ifcOWL_elements.isSelected(),
+				this.hasPerformanceBoost.isSelected(), this.hasBoundingBox_WKT.isSelected(),
+				this.geometry_interfaces.isSelected(), this.hasElementWireframe.isSelected(), this.createUnits.isSelected(),
+				this.hasHierarchicalNaming.isSelected(), this.hasSimpleProperties.isSelected(),
+				this.propertiesAsPropertySets.isSelected(), this.ifc_based_elements.isSelected(),
+				this.createTrig.isSelected(), isJsonLdOutputSelected(), isIcddOutputSelected());
+	}
+
+	private boolean hasReadInSettingsChanged(ConversionSettings previous, ConversionSettings current) {
+		if (previous == null) {
+			return true;
+		}
+		return !Objects.equals(previous.ifcFileName(), current.ifcFileName())
+				|| !Objects.equals(previous.baseUri(), current.baseUri())
+				|| previous.propsLevel() != current.propsLevel()
+				|| previous.hasBuildingElements() != current.hasBuildingElements()
+				|| previous.hasBuildingProperties() != current.hasBuildingProperties()
+				|| previous.hasPropertiesBlankNodes() != current.hasPropertiesBlankNodes()
+				|| previous.hasGeolocation() != current.hasGeolocation()
+				|| previous.hasGeometry() != current.hasGeometry()
+				|| previous.exportIfcOwl() != current.exportIfcOwl()
+				|| previous.hasPerformanceBoost() != current.hasPerformanceBoost()
+				|| previous.hasBoundingBoxWkt() != current.hasBoundingBoxWkt()
+				|| previous.hasInterfaces() != current.hasInterfaces()
+				|| previous.hasElementWireframe() != current.hasElementWireframe()
+				|| previous.hasUnits() != current.hasUnits();
+	}
+
+	private boolean hasConversionRequestChanged(ConversionRequest previous, ConversionRequest current) {
+		if (previous == null) {
+			return true;
+		}
+		ConversionSettings previousSettings = previous.settings();
+		ConversionSettings currentSettings = current.settings();
+		return hasReadInSettingsChanged(previousSettings, currentSettings)
+				|| previousSettings.hasSeparateBuildingElementsModel() != currentSettings.hasSeparateBuildingElementsModel()
+				|| previousSettings.hasSeparatePropertiesModel() != currentSettings.hasSeparatePropertiesModel()
+				|| previousSettings.hasHierarchicalNaming() != currentSettings.hasHierarchicalNaming()
+				|| previousSettings.hasSimpleProperties() != currentSettings.hasSimpleProperties()
+				|| previousSettings.propertiesAsPropertySets() != currentSettings.propertiesAsPropertySets()
+				|| previousSettings.hasIfcBasedElements() != currentSettings.hasIfcBasedElements()
+				|| previousSettings.exportAsJsonLd() != currentSettings.exportAsJsonLd()
+				|| previousSettings.exportAsIcdd() != currentSettings.exportAsIcdd()
+				|| !Objects.equals(previous.selectedTypes(), current.selectedTypes())
+				|| !Objects.equals(previous.selectedPsets(), current.selectedPsets());
+	}
+
+	private Set<String> selectedElementTypes() {
+		Set<String> selectedTypes = new HashSet<>();
+		for (TreeItem<String> item : this.element_types_checkbox.getCheckModel().getCheckedItems()) {
+			String value = item.getValue();
+			int suffix = value.lastIndexOf(" (");
+			selectedTypes.add(suffix > 0 && value.endsWith(")") ? value.substring(0, suffix) : value);
+		}
+		return selectedTypes;
+	}
+
+	private Set<String> selectedPropertySets() {
+		Set<String> selectedPsets = new HashSet<>();
+		for (TreeItem<String> item : this.propertysets_checkbox.getCheckModel().getCheckedItems()) {
+			selectedPsets.add(item.getValue());
+		}
+		return selectedPsets;
+	}
+
+	private static String shellQuote(String value) {
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+			return "\"" + value.replace("\"", "\\\"") + "\"";
+		}
+		return "'" + value.replace("'", "'\"'\"'") + "'";
+	}
+
+	private static void addBooleanOption(List<String> arguments, String option, boolean enabled) {
+		if (enabled) {
+			arguments.add(option);
+		}
+	}
+
+	private String createCommandLine(ConversionSettings settings) {
+		if (settings.exportAsIcdd()) {
+			return "# ICDD package export is available in the IFCtoLBD desktop application.";
+		}
+		List<String> arguments = new ArrayList<>();
+		arguments.add("IFCtoLBDConverter_CLI");
+		arguments.add(shellQuote(settings.ifcFileName()));
+		arguments.add("--target_file");
+		arguments.add(shellQuote(settings.rdfTargetName()));
+		arguments.add("--url");
+		arguments.add(shellQuote(settings.baseUri()));
+		arguments.add("--level");
+		arguments.add(Integer.toString(settings.propsLevel()));
+		addBooleanOption(arguments, "--hasBuildingElements", settings.hasBuildingElements());
+		addBooleanOption(arguments, "--hasSeparateBuildingElementsModel", settings.hasSeparateBuildingElementsModel());
+		addBooleanOption(arguments, "--hasBuildingElementProperties", settings.hasBuildingProperties());
+		addBooleanOption(arguments, "--hasSeparatePropertiesModel", settings.hasSeparatePropertiesModel());
+		addBooleanOption(arguments, "--hasBlankNodes", settings.hasPropertiesBlankNodes());
+		addBooleanOption(arguments, "--hasGeolocation", settings.hasGeolocation());
+		addBooleanOption(arguments, "--hasGeometry", settings.hasGeometry());
+		addBooleanOption(arguments, "--ifcOWL", settings.exportIfcOwl());
+		addBooleanOption(arguments, "--hasPerformanceBoost", settings.hasPerformanceBoost());
+		addBooleanOption(arguments, "--hasWKT", settings.hasBoundingBoxWkt());
+		addBooleanOption(arguments, "--hasInterfaces", settings.hasInterfaces());
+		addBooleanOption(arguments, "--hasWireframe", settings.hasElementWireframe());
+		addBooleanOption(arguments, "--hasUnits", settings.hasUnits());
+		addBooleanOption(arguments, "--hasHierarchicalNaming", settings.hasHierarchicalNaming());
+		addBooleanOption(arguments, "--hasSimpleProperties", settings.hasSimpleProperties());
+		addBooleanOption(arguments, "-asPropertySets", settings.propertiesAsPropertySets());
+		addBooleanOption(arguments, "--hasIfc_based_elements", settings.hasIfcBasedElements());
+		addBooleanOption(arguments, "--hasTriG", settings.createTrig());
+		addBooleanOption(arguments, "--JSON", settings.exportAsJsonLd());
+		for (String type : selectedElementTypes().stream().sorted().toList()) {
+			arguments.add("--selectedType");
+			arguments.add(shellQuote(type));
+		}
+		for (String pset : selectedPropertySets().stream().sorted().toList()) {
+			arguments.add("--selectedPropertySet");
+			arguments.add(shellQuote(pset));
+		}
+		return String.join(" ", arguments);
+	}
+
+	@FXML
+	private void copyCommandLine() {
+		ConversionSettings settings = currentSettings();
+		if (settings.ifcFileName() == null || settings.rdfTargetName() == null) {
+			this.conversionTxt.appendText("Select IFC and target files before copying the command line.\n");
+			return;
+		}
+		String commandLine = createCommandLine(settings);
+		ClipboardContent content = new ClipboardContent();
+		content.putString(commandLine);
+		Clipboard.getSystemClipboard().setContent(content);
+		this.conversionTxt.appendText("Command line copied to the clipboard.\n");
+	}
+
+	private void setupCommandLinePreview() {
+		this.copyCommandLineButton.setTooltip(new Tooltip("The command line command to the clipboard"));
+	}
+
+	private void persistSettings(ConversionSettings settings) {
+		this.prefs.putBoolean("lbd_building_elements", settings.hasBuildingElements());
+		this.prefs.putBoolean("lbd_building_elements_separate_file", settings.hasSeparateBuildingElementsModel());
+		this.prefs.putBoolean("lbd_building_props", settings.hasBuildingProperties());
+		this.prefs.putBoolean("lbd_building_props_blank_nodes", settings.hasPropertiesBlankNodes());
+		this.prefs.putBoolean("lbd_building_props_separate_file", settings.hasSeparatePropertiesModel());
+		this.prefs.put("lbd_props_base_url", settings.baseUri());
+		this.prefs.putBoolean("lbd_boundinbox_elements", settings.hasGeometry());
+		this.prefs.putBoolean("lbd_boundinbox_interfaces", settings.hasInterfaces());
+		this.prefs.putBoolean("lbd_boundinbox_wkt", settings.hasBoundingBoxWkt());
+		this.prefs.putBoolean("lbd_element_wireframe", settings.hasElementWireframe());
+		this.prefs.putBoolean("lbd_ifcOWL_elements", settings.exportIfcOwl());
+		this.prefs.putBoolean("lbd_performance", settings.hasPerformanceBoost());
+		this.prefs.putBoolean("lbd_createUnits", settings.hasUnits());
+		this.prefs.putBoolean("lbd_geolocation", settings.hasGeolocation());
+		this.prefs.putBoolean("lbd_hasHierarchicalNaming", settings.hasHierarchicalNaming());
+		this.prefs.putBoolean("lbd_hasSimpleProperties", settings.hasSimpleProperties());
+		this.prefs.putBoolean("lbd_propertiesAsPropertySets", settings.propertiesAsPropertySets());
+		this.prefs.putBoolean("ifc_based_elements", settings.hasIfcBasedElements());
+		this.prefs.putBoolean("createTrig", settings.createTrig());
+		this.prefs.putBoolean("export_as_jsonld", settings.exportAsJsonLd());
+		this.prefs.put("desktop_output_format",
+				settings.exportAsIcdd() ? "ICDD" : settings.exportAsJsonLd() ? "JSON-LD" : "Turtle TTL");
+		this.prefs.putInt("lbd_props_level", settings.propsLevel());
+	}
+
+	private void readInIFC() {
+		ConversionSettings settings = currentSettings();
+		readInIFCExecute(settings);
+	}
+
+	private void readInIFCExecute(ConversionSettings settings) {
+		if ((this.running_read_in != null && !this.running_read_in.isDone())
+				|| (this.running_conversion != null && !this.running_conversion.isDone())) {
+			this.conversionTxt.appendText("The previous read-in or conversion is still running.\n");
+			return;
+		}
+		persistSettings(settings);
+		this.readInSettings = settings;
+		setRunReady(false);
+		resetConversionOutput();
+		this.element_types_checkbox.setRoot(null);
+		this.propertysets_checkbox.setRoot(null);
+		this.conversionTxt.setText("");
+		clearGeometryPreview("Convert with geometry enabled to preview the model.");
+		try {
+			this.running_read_in = this.executor
+					.submit(new ReadinInThread(settings.ifcFileName(), settings.baseUri(), settings.rdfTargetName(),
+							settings.propsLevel(), settings.hasBuildingElements(),
+							settings.hasSeparateBuildingElementsModel(), settings.hasBuildingProperties(),
+							settings.hasSeparatePropertiesModel(), settings.hasPropertiesBlankNodes(),
+							settings.hasGeolocation(), settings.hasGeometry() || settings.hasElementWireframe(), settings.exportIfcOwl(),
+							settings.hasUnits(), settings.hasPerformanceBoost(), settings.hasBoundingBoxWkt(),
+							settings.hasInterfaces()));
+		} catch (Exception e) {
+			this.options_panel.setDisable(false);
+			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
+		}
+	}
+
+	private void setupGeometryPreview() {
+		this.geometryCard.setMinWidth(GEOMETRY_CARD_WIDTH);
+		this.geometryCard.setPrefWidth(GEOMETRY_CARD_WIDTH);
+		this.geometryCard.setMaxWidth(GEOMETRY_CARD_WIDTH);
+		this.geometryViewport.setMinWidth(GEOMETRY_VIEWPORT_WIDTH);
+		this.geometryViewport.setPrefWidth(GEOMETRY_VIEWPORT_WIDTH);
+		this.geometryViewport.setMaxWidth(Double.MAX_VALUE);
+
+		this.geometryModelRoot = new Group();
+		this.geometryModelRoot.setDepthTest(DepthTest.ENABLE);
+		this.geometryModelRoot.getTransforms().addAll(this.geometryRotateX, this.geometryRotateY);
+
+		AmbientLight ambientLight = new AmbientLight(Color.rgb(190, 190, 190));
+		DirectionalLight keyLight = new DirectionalLight(Color.rgb(235, 235, 235));
+		keyLight.setTranslateX(-360);
+		keyLight.setTranslateY(-420);
+		keyLight.setTranslateZ(-520);
+
+		this.geometrySceneRoot = new Group(this.geometryModelRoot, ambientLight, keyLight);
+		this.geometrySceneRoot.setDepthTest(DepthTest.ENABLE);
+
+		this.geometryCamera = new PerspectiveCamera(true);
+		this.geometryCamera.setNearClip(0.1);
+		this.geometryCamera.setFarClip(10_000);
+		this.geometryCamera.getTransforms().add(this.geometryCameraDistance);
+
+		this.geometryScene = new SubScene(this.geometrySceneRoot, 320, 240, true, SceneAntialiasing.BALANCED);
+		this.geometryScene.widthProperty().bind(this.geometryViewport.widthProperty());
+		this.geometryScene.heightProperty().bind(this.geometryViewport.heightProperty());
+		this.geometryScene.setCamera(this.geometryCamera);
+		this.geometryScene.setFill(Color.rgb(248, 250, 252));
+		this.geometryScene.setFocusTraversable(true);
+		this.geometryScene.setOnMousePressed(event -> {
+			bringFloatingCardToFront(this.geometryCard);
+			this.geometryMouseX = event.getSceneX();
+			this.geometryMouseY = event.getSceneY();
+			this.geometryPanning = event.getButton() == MouseButton.MIDDLE || event.getButton() == MouseButton.SECONDARY;
+			this.geometryScene.requestFocus();
+		});
+		this.geometryScene.setOnMouseDragged(event -> {
+			double dx = event.getSceneX() - this.geometryMouseX;
+			double dy = event.getSceneY() - this.geometryMouseY;
+			if (this.geometryPanning) {
+				this.geometryModelRoot.setTranslateX(this.geometryModelRoot.getTranslateX() + dx);
+				this.geometryModelRoot.setTranslateY(this.geometryModelRoot.getTranslateY() + dy);
+			} else {
+				this.geometryRotateY.setAngle(this.geometryRotateY.getAngle() + dx * 0.35);
+				this.geometryRotateX.setAngle(clamp(this.geometryRotateX.getAngle() - dy * 0.35, -90, 90));
+			}
+			this.geometryMouseX = event.getSceneX();
+			this.geometryMouseY = event.getSceneY();
+			event.consume();
+		});
+		this.geometryScene.setOnScroll(event -> {
+			double zoomFactor = event.getDeltaY() > 0 ? 1.12 : 0.89;
+			this.geometryZoom = clamp(this.geometryZoom * zoomFactor, 0.25, 6.0);
+			updateGeometryCamera();
+			event.consume();
+		});
+
+		Button fitButton = new Button("Fit");
+		fitButton.getStyleClass().add("geometry-tool-button");
+		fitButton.setFocusTraversable(false);
+		fitButton.setOnAction(event -> {
+			fitGeometryPreview();
+			event.consume();
+		});
+		StackPane.setAlignment(fitButton, Pos.TOP_RIGHT);
+
+		this.geometryViewport.getChildren().setAll(this.geometryScene, fitButton);
+		clearGeometryPreview("Select geometry and convert to preview the model.");
+	}
+
+	private void setupFloatingCards() {
+		setupFloatingCard(this.options_panel, "Settings");
+		setupFloatingCard(this.filtersCard, "Filters");
+		setupFloatingCard(this.geometryCard, "Geometry Preview");
+		setupFloatingCard(this.sparqlQueryCard, "SPARQL Query");
+		setupFloatingCard(this.validateCard, "Validate");
+		matchFloatingCardWidthsToSettings();
+		setupFloatingWindowButtonRouting();
+		this.floatingWorkspace.widthProperty().addListener((observable, oldValue, newValue) -> clampFloatingCardsToWorkspace());
+		this.floatingWorkspace.heightProperty().addListener((observable, oldValue, newValue) -> clampFloatingCardsToWorkspace());
+		Platform.runLater(() -> {
+			alignFloatingCardsIfNeeded();
+			clampFloatingCardsToWorkspace();
+		});
+	}
+
+	private void matchFloatingCardWidthsToSettings() {
+		if (this.options_panel == null) {
+			return;
+		}
+		for (TitledPane card : new TitledPane[] {
+				this.filtersCard, this.geometryCard, this.sparqlQueryCard, this.validateCard }) {
+			if (card == null) {
+				continue;
+			}
+			card.minWidthProperty().bind(this.options_panel.widthProperty());
+			card.prefWidthProperty().bind(this.options_panel.widthProperty());
+			card.maxWidthProperty().bind(this.options_panel.widthProperty());
+		}
+	}
+
+	private void setupSparqlQueryWindow() {
+		if (this.sparqlEditorTxt != null && this.sparqlEditorTxt.getText().isBlank()) {
+			this.sparqlEditorTxt.setText(DEFAULT_SPARQL_QUERY);
+		}
+		setSparqlQueryAvailable(false);
+	}
+
+	private void setupValidateWindow() {
+		if (this.shaclShapesList != null) {
+			this.shaclShapesList.setItems(this.shapeValidationItems);
+			this.shaclShapesList.setCellFactory(list -> new ListCell<>() {
+				private final Label shapeLabel = new Label();
+				private final Button removeButton = new Button("x");
+				private final HBox row = new HBox(8.0, this.shapeLabel, this.removeButton);
+
+				{
+					this.row.setAlignment(Pos.CENTER_LEFT);
+					this.shapeLabel.setMaxWidth(Double.MAX_VALUE);
+					this.shapeLabel.setWrapText(true);
+					HBox.setHgrow(this.shapeLabel, Priority.ALWAYS);
+					this.removeButton.getStyleClass().add("shape-remove-button");
+					this.removeButton.setTooltip(new Tooltip("Remove rule"));
+					this.removeButton.setFocusTraversable(false);
+				}
+
+				@Override
+				protected void updateItem(ShapeValidationItem item, boolean empty) {
+					super.updateItem(item, empty);
+					getStyleClass().removeAll("shape-valid", "shape-invalid", "shape-pending");
+					if (empty || item == null) {
+						setText(null);
+						setGraphic(null);
+						setTooltip(null);
+						return;
+					}
+					setText(null);
+					this.shapeLabel.setText(item.displayName + "\n" + item.sourceName);
+					this.removeButton.setOnAction(event -> removeShapeItem(item));
+					setGraphic(this.row);
+					setTooltip(new Tooltip(item.message));
+					if (Boolean.TRUE.equals(item.conforms)) {
+						getStyleClass().add("shape-valid");
+					} else if (Boolean.FALSE.equals(item.conforms)) {
+						getStyleClass().add("shape-invalid");
+					} else {
+						getStyleClass().add("shape-pending");
+					}
+				}
+			});
+		}
+		loadDefaultShapes();
+		setValidationAvailable(false);
+	}
+
+	private boolean isFiltersAvailable() {
+		return this.running_read_in != null && this.running_read_in.isDone() && this.element_types_checkbox != null
+				&& this.element_types_checkbox.getRoot() != null;
+	}
+
+	private void setFiltersAvailable(boolean available) {
+		if (this.filtersWorkflowButton != null) {
+			this.filtersWorkflowButton.setDisable(!available);
+			setUnavailableStyle(this.filtersWorkflowButton, !available);
+		}
+		if (this.filtersCard != null) {
+			setUnavailableStyle(this.filtersCard, !available);
+		}
+	}
+
+	private boolean isGeometryPreviewAvailable() {
+		return this.lastSuccessfulConversionRequest != null;
+	}
+
+	private void setGeometryPreviewAvailable(boolean available) {
+		if (this.geometryWorkflowButton != null) {
+			this.geometryWorkflowButton.setDisable(!available);
+			setUnavailableStyle(this.geometryWorkflowButton, !available);
+		}
+		if (this.geometryCard != null) {
+			setUnavailableStyle(this.geometryCard, !available);
+		}
+	}
+
+	private boolean isSparqlQueryAvailable() {
+		if (!this.queryDataAvailable || this.lastSuccessfulConversionRequest == null) {
+			return false;
+		}
+		ConversionSettings settings = this.lastSuccessfulConversionRequest.settings();
+		return settings != null && !settings.exportAsIcdd()
+				&& settings.rdfTargetName() != null
+				&& new File(settings.rdfTargetName()).isFile();
+	}
+
+	private boolean isValidationAvailable() {
+		return isSparqlQueryAvailable();
+	}
+
+	private void setSparqlQueryAvailable(boolean available) {
+		this.queryDataAvailable = available;
+		if (this.queryWorkflowButton != null) {
+			this.queryWorkflowButton.setDisable(!available);
+			setUnavailableStyle(this.queryWorkflowButton, !available);
+		}
+		if (this.runSparqlQueryButton != null) {
+			this.runSparqlQueryButton.setDisable(!available);
+		}
+		if (this.sparqlQueryCard != null) {
+			setUnavailableStyle(this.sparqlQueryCard, !available);
+		}
+		if (!available) {
+			if (this.sparqlResultsTxt != null) {
+				this.sparqlResultsTxt.setText("Generate an RDF output to run SPARQL queries.");
+			}
+		}
+	}
+
+	private void setValidationAvailable(boolean available) {
+		if (this.validateWorkflowButton != null) {
+			this.validateWorkflowButton.setDisable(!available);
+			setUnavailableStyle(this.validateWorkflowButton, !available);
+		}
+		if (this.loadShaclButton != null) {
+			this.loadShaclButton.setDisable(false);
+		}
+		if (this.validateCard != null) {
+			setUnavailableStyle(this.validateCard, !available);
+		}
+		if (!available) {
+			this.outputRevision++;
+			this.validationRevision++;
+			for (ShapeValidationItem item : this.shapeValidationItems) {
+				item.conforms = null;
+				item.message = "Generate an RDF output to validate shapes.";
+			}
+			if (this.shaclShapesList != null) {
+				this.shaclShapesList.refresh();
+			}
+			if (this.validateStatusLabel != null) {
+				this.validateStatusLabel.setText("Generate an RDF output to validate loaded SHACL shapes.");
+			}
+		}
+	}
+
+	private void setWorkflowDataAvailable(boolean filtersAvailable, boolean geometryAvailable, boolean sparqlAvailable) {
+		setFiltersAvailable(filtersAvailable);
+		setGeometryPreviewAvailable(geometryAvailable);
+		setSparqlQueryAvailable(sparqlAvailable);
+		setValidationAvailable(sparqlAvailable);
+	}
+
+	private void resetConversionOutput() {
+		this.lastSuccessfulConversionRequest = null;
+		this.pendingConversionRequest = null;
+		setWorkflowDataAvailable(false, false, false);
+	}
+
+	private static void setUnavailableStyle(Node node, boolean unavailable) {
+		if (node == null) {
+			return;
+		}
+		if (unavailable) {
+			if (!node.getStyleClass().contains("data-unavailable")) {
+				node.getStyleClass().add("data-unavailable");
+			}
+		} else {
+			node.getStyleClass().remove("data-unavailable");
+		}
+	}
+
+	private void alignFloatingCardsIfNeeded() {
+		if (this.sparqlCardPositioned || this.floatingWorkspace == null) {
+			return;
+		}
+		double y = FLOATING_CARD_INITIAL_Y;
+		y = positionFloatingCardInLine(this.options_panel, y);
+		y = positionFloatingCardInLine(this.filtersCard, y);
+		y = positionFloatingCardInLine(this.geometryCard, y);
+		y = positionFloatingCardInLine(this.sparqlQueryCard, y);
+		positionFloatingCardInLine(this.validateCard, y);
+		this.sparqlCardPositioned = true;
+	}
+
+	private double positionFloatingCardInLine(TitledPane card, double y) {
+		if (card == null) {
+			return y;
+		}
+		card.setLayoutX(FLOATING_CARD_INITIAL_X);
+		card.setLayoutY(y);
+		return y + FLOATING_CARD_HEADER_HEIGHT + FLOATING_CARD_INITIAL_GAP;
+	}
+
+	private void setRunReady(boolean ready) {
+		setRunButtonReady(this.convert2RDFButton, ready);
+		setRunButtonReady(this.basicConvert2RDFButton, ready);
+		if (ready) {
+			setSelectIfcDefault(false);
+		}
+	}
+
+	private static void setRunButtonReady(Button button, boolean ready) {
+		if (button == null) {
+			return;
+		}
+		button.setDisable(!ready);
+		button.setDefaultButton(ready);
+		button.getStyleClass().removeAll("workflow-button", "workflow-run-button");
+		button.getStyleClass().add(ready ? "workflow-run-button" : "workflow-button");
+	}
+
+	private void setSelectIfcDefault(boolean isDefault) {
+		if (this.selectIFCFileButton != null) {
+			this.selectIFCFileButton.setDefaultButton(isDefault);
+		}
+		if (this.basicSelectIFCFileButton != null) {
+			this.basicSelectIFCFileButton.setDefaultButton(isDefault);
+		}
+	}
+
+	private void setIfcFileLabel(String text) {
+		if (this.labelIFCFile != null) {
+			this.labelIFCFile.setText(text);
+		}
+		if (this.basicLabelIFCFile != null) {
+			this.basicLabelIFCFile.setText(text);
+		}
+	}
+
+	private void setTargetFileLabel(String text) {
+		if (this.labelTargetFile != null) {
+			this.labelTargetFile.setText(text);
+		}
+	}
+
+	/** Keeps the editable advanced-workflow output field as the conversion target. */
+	private void setupTargetFileEditor() {
+		this.labelTargetFile.textProperty().addListener((observable, oldValue, newValue) -> {
+			String target = newValue == null ? "" : newValue.trim();
+			if (target.isEmpty() || "Target path will be generated after input selection".equals(target)) {
+				this.rdfTargetName = null;
+				return;
+			}
+			this.rdfTargetName = target;
+			File parent = new File(target).getAbsoluteFile().getParentFile();
+			if (parent != null && parent.isDirectory()) {
+				this.prefs.put("ifc_target_directory", parent.getAbsolutePath());
+			}
+		});
+	}
+
+	private void setupOutputFormatChoices() {
+		String fallback = this.prefs.getBoolean("export_as_jsonld", false) ? "JSON-LD" : "Turtle TTL";
+		String initialValue = this.prefs.get("desktop_output_format", fallback);
+		if (!List.of("Turtle TTL", "JSON-LD", "ICDD package").contains(initialValue)) {
+			initialValue = "ICDD".equals(initialValue) ? "ICDD package" : fallback;
+		}
+		this.outputJSONorTTL.getItems().setAll("Turtle TTL", "JSON-LD", "ICDD package");
+		this.basicOutputJSONorTTL.getItems().setAll("Turtle TTL", "JSON-LD", "ICDD package");
+		this.outputJSONorTTL.setValue(initialValue);
+		this.basicOutputJSONorTTL.setValue(initialValue);
+		this.outputJSONorTTL.valueProperty().addListener((observable, oldValue, newValue) -> {
+			if (newValue != null && !Objects.equals(this.basicOutputJSONorTTL.getValue(), newValue)) {
+				this.basicOutputJSONorTTL.setValue(newValue);
+			}
+			updateTargetFileExtension();
+		});
+		this.basicOutputJSONorTTL.valueProperty().addListener((observable, oldValue, newValue) -> {
+			if (newValue != null && !Objects.equals(this.outputJSONorTTL.getValue(), newValue)) {
+				this.outputJSONorTTL.setValue(newValue);
+			}
+			updateTargetFileExtension();
+		});
+	}
+
+	private static void setDropHandlers(Node node, EventHandler<DragEvent> dragOverHandler,
+			EventHandler<DragEvent> dragDroppedHandler) {
+		if (node == null) {
+			return;
+		}
+		node.setOnDragOver(dragOverHandler);
+		node.setOnDragDropped(dragDroppedHandler);
+	}
+
+	private void setupFloatingCard(TitledPane card, String title) {
+		if (card == null) {
+			return;
+		}
+		card.setText("");
+		card.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+		card.setGraphic(createFloatingCardHeader(card, title));
+		this.floatingCardNormalHeights.put(card, card.getPrefHeight());
+		if (!card.isExpanded()) {
+			minimizeFloatingCard(card, false);
+		}
+		addFloatingCardBehavior(card);
+	}
+
+	private HBox createFloatingCardHeader(TitledPane card, String title) {
+		Label titleLabel = new Label(title);
+		titleLabel.getStyleClass().add("floating-card-title-label");
+		Region spacer = new Region();
+		HBox.setHgrow(spacer, Priority.ALWAYS);
+
+		Button minimizeButton = new Button("_");
+		configureFloatingCardWindowButton(minimizeButton);
+		setFloatingCardWindowButtonAction(card, minimizeButton, () -> {
+			card.toFront();
+			minimizeFloatingCard(card);
+		});
+
+		Button maximizeButton = new Button("□");
+		configureFloatingCardWindowButton(maximizeButton);
+		setFloatingCardWindowButtonAction(card, maximizeButton, () -> bringFloatingCardToFront(card));
+
+		HBox header = new HBox(6, titleLabel, spacer, minimizeButton, maximizeButton);
+		header.getStyleClass().add("floating-card-title-bar");
+		header.setAlignment(Pos.CENTER_LEFT);
+		header.setFillHeight(false);
+		header.setPickOnBounds(true);
+		header.minWidthProperty().bind(card.widthProperty().subtract(34));
+		header.prefWidthProperty().bind(card.widthProperty().subtract(34));
+		header.maxWidthProperty().bind(card.widthProperty().subtract(34));
+		return header;
+	}
+
+	private static void configureFloatingCardWindowButton(Button button) {
+		button.getStyleClass().add("floating-card-window-button");
+		button.setFocusTraversable(false);
+		button.setPickOnBounds(false);
+		button.setMinSize(FLOATING_CARD_WINDOW_BUTTON_WIDTH, FLOATING_CARD_WINDOW_BUTTON_HEIGHT);
+		button.setPrefSize(FLOATING_CARD_WINDOW_BUTTON_WIDTH, FLOATING_CARD_WINDOW_BUTTON_HEIGHT);
+		button.setMaxSize(FLOATING_CARD_WINDOW_BUTTON_WIDTH, FLOATING_CARD_WINDOW_BUTTON_HEIGHT);
+	}
+
+	private void setupFloatingWindowButtonRouting() {
+		if (this.floatingWorkspace == null) {
+			return;
+		}
+		this.floatingWorkspace.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+			if (event.getButton() != MouseButton.PRIMARY) {
+				return;
+			}
+			Button button = findFloatingWindowButtonAt(event);
+			if (button != null) {
+				this.pressedFloatingWindowButton = button;
+				event.consume();
+			}
+		});
+		this.floatingWorkspace.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+			if (this.pressedFloatingWindowButton == null) {
+				return;
+			}
+			Button pressedButton = this.pressedFloatingWindowButton;
+			this.pressedFloatingWindowButton = null;
+			if (event.getButton() == MouseButton.PRIMARY && pressedButton == findFloatingWindowButtonAt(event)) {
+				Runnable action = this.floatingWindowButtonActions.get(pressedButton);
+				if (action != null) {
+					action.run();
+				}
+			}
+			event.consume();
+		});
+	}
+
+	private Button findFloatingWindowButtonAt(MouseEvent event) {
+		Button topButton = null;
+		int topCardIndex = -1;
+		for (Button button : this.floatingWindowButtonActions.keySet()) {
+			TitledPane card = this.floatingWindowButtonCards.get(button);
+			if (card == null || !card.isVisible() || button.getScene() == null
+					|| !isInsideWindowButtonVisualBounds(button, event)) {
+				continue;
+			}
+			int cardIndex = this.floatingWorkspace.getChildren().indexOf(card);
+			if (cardIndex >= topCardIndex) {
+				topCardIndex = cardIndex;
+				topButton = button;
+			}
+		}
+		return topButton;
+	}
+
+	private void setFloatingCardWindowButtonAction(TitledPane card, Button button, Runnable action) {
+		this.floatingWindowButtonActions.put(button, action);
+		this.floatingWindowButtonCards.put(button, card);
+		button.setOnAction(null);
+		button.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+			if (event.getButton() == MouseButton.PRIMARY && isInsideWindowButtonVisualBounds(button, event)) {
+				this.pressedFloatingWindowButton = button;
+				event.consume();
+			}
+		});
+		button.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+			if (this.pressedFloatingWindowButton == button) {
+				this.pressedFloatingWindowButton = null;
+				if (event.getButton() == MouseButton.PRIMARY && isInsideWindowButtonVisualBounds(button, event)) {
+					action.run();
+				}
+				event.consume();
+			}
+		});
+		button.addEventFilter(MouseEvent.MOUSE_EXITED, event -> {
+			if (this.pressedFloatingWindowButton == button) {
+				this.pressedFloatingWindowButton = null;
+			}
+		});
+	}
+
+	private static boolean isInsideWindowButtonVisualBounds(Button button, MouseEvent event) {
+		Point2D localPoint = button.screenToLocal(event.getScreenX(), event.getScreenY());
+		if (localPoint == null) {
+			return false;
+		}
+		double visualMinX = Math.max(0, (button.getWidth() - FLOATING_CARD_WINDOW_BUTTON_WIDTH) / 2.0);
+		double visualMinY = Math.max(0, (button.getHeight() - FLOATING_CARD_WINDOW_BUTTON_HEIGHT) / 2.0);
+		double visualMaxX = visualMinX + FLOATING_CARD_WINDOW_BUTTON_WIDTH;
+		double visualMaxY = visualMinY + FLOATING_CARD_WINDOW_BUTTON_HEIGHT;
+		return localPoint.getX() >= visualMinX && localPoint.getX() <= visualMaxX && localPoint.getY() >= visualMinY
+				&& localPoint.getY() <= visualMaxY;
+	}
+
+	private void addFloatingCardBehavior(TitledPane card) {
+		if (card == null) {
+			return;
+		}
+		card.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+			if (!isInsideVisibleFloatingCardArea(card, event)) {
+				return;
+			}
+			if (event.getButton() == MouseButton.PRIMARY && !isButtonEventTarget(event.getTarget())
+					&& !isGeometrySceneEventTarget(event.getTarget())) {
+				if (isCardHeaderEvent(card, event)) {
+					card.toFront();
+				} else {
+					bringFloatingCardToFront(card);
+				}
+			}
+			if (!isCardHeaderEvent(card, event)) {
+				return;
+			}
+			this.floatingMouseX = event.getSceneX();
+			this.floatingMouseY = event.getSceneY();
+			this.floatingCardX = card.getLayoutX();
+			this.floatingCardY = card.getLayoutY();
+			event.consume();
+		});
+		card.addEventFilter(MouseEvent.MOUSE_DRAGGED, event -> {
+			if (!isInsideVisibleFloatingCardArea(card, event) || !isCardHeaderEvent(card, event)) {
+				return;
+			}
+			double nextX = this.floatingCardX + event.getSceneX() - this.floatingMouseX;
+			double nextY = this.floatingCardY + event.getSceneY() - this.floatingMouseY;
+			card.setLayoutX(clamp(nextX, 0, Math.max(0, this.floatingWorkspace.getWidth() - card.getWidth())));
+			card.setLayoutY(clamp(nextY, 0, Math.max(0, this.floatingWorkspace.getHeight() - FLOATING_CARD_HEADER_HEIGHT)));
+			event.consume();
+		});
+		card.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+			if (isInsideVisibleFloatingCardArea(card, event) && isCardHeaderEvent(card, event)) {
+				event.consume();
+			}
+		});
+		card.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+			if (isInsideVisibleFloatingCardArea(card, event) && isCardHeaderEvent(card, event)) {
+				event.consume();
+			}
+		});
+	}
+
+	private void clampFloatingCardsToWorkspace() {
+		clampFloatingCardToWorkspace(this.options_panel);
+		clampFloatingCardToWorkspace(this.filtersCard);
+		clampFloatingCardToWorkspace(this.geometryCard);
+		clampFloatingCardToWorkspace(this.sparqlQueryCard);
+		clampFloatingCardToWorkspace(this.validateCard);
+	}
+
+	private void clampFloatingCardToWorkspace(TitledPane card) {
+		if (card == null || this.floatingWorkspace == null) {
+			return;
+		}
+		double workspaceWidth = this.floatingWorkspace.getWidth();
+		double workspaceHeight = this.floatingWorkspace.getHeight();
+		if (workspaceWidth <= 0 || workspaceHeight <= 0) {
+			return;
+		}
+		double cardWidth = card.getWidth() > 0 ? card.getWidth() : card.getPrefWidth();
+		double cardHeight = card.getHeight() > 0 ? card.getHeight() : card.getPrefHeight();
+		double maxX = Math.max(0, workspaceWidth - cardWidth);
+		double maxY = Math.max(0, workspaceHeight - Math.max(FLOATING_CARD_HEADER_HEIGHT, cardHeight));
+		card.setLayoutX(clamp(card.getLayoutX(), 0, maxX));
+		card.setLayoutY(clamp(card.getLayoutY(), 0, maxY));
+	}
+
+	private boolean isCardHeaderEvent(TitledPane card, MouseEvent event) {
+		return event.getButton() == MouseButton.PRIMARY && event.getY() <= FLOATING_CARD_HEADER_HEIGHT
+				&& isInsideVisibleFloatingCardArea(card, event) && !isButtonEventTarget(event.getTarget());
+	}
+
+	private boolean isInsideVisibleFloatingCardArea(TitledPane card, MouseEvent event) {
+		Point2D localPoint = card.screenToLocal(event.getScreenX(), event.getScreenY());
+		if (localPoint == null) {
+			return false;
+		}
+		double visibleWidth = card.getWidth() > 0 ? card.getWidth() : card.getPrefWidth();
+		double visibleHeight = isFloatingCardMinimized(card) ? FLOATING_CARD_HEADER_HEIGHT
+				: Math.max(FLOATING_CARD_HEADER_HEIGHT, card.getHeight() > 0 ? card.getHeight() : card.getPrefHeight());
+		return localPoint.getX() >= 0 && localPoint.getX() <= visibleWidth && localPoint.getY() >= 0
+				&& localPoint.getY() <= visibleHeight;
+	}
+
+	private boolean isButtonEventTarget(Object target) {
+		if (!(target instanceof Node node)) {
+			return target instanceof Button;
+		}
+		while (node != null) {
+			if (node instanceof Button) {
+				return true;
+			}
+			node = node.getParent();
+		}
+		return false;
+	}
+
+	private boolean isGeometrySceneEventTarget(Object target) {
+		if (!(target instanceof Node node)) {
+			return false;
+		}
+		while (node != null) {
+			if (node == this.geometryScene) {
+				return true;
+			}
+			node = node.getParent();
+		}
+		return false;
+	}
+
+	private void toggleFloatingCard(TitledPane card) {
+		if (card == null) {
+			return;
+		}
+		card.setDisable(false);
+		if (card.isExpanded() || card.getPrefHeight() > FLOATING_CARD_HEADER_HEIGHT + 1) {
+			minimizeFloatingCard(card);
+		} else {
+			bringFloatingCardToFront(card);
+		}
+	}
+
+	private void bringFloatingCardToFront(TitledPane card) {
+		if (card == null) {
+			return;
+		}
+		card.setDisable(false);
+		if (card.getStyleClass().contains("data-unavailable")) {
+			card.toFront();
+			return;
+		}
+		if (!card.isExpanded() || card.getPrefHeight() <= FLOATING_CARD_HEADER_HEIGHT + 1) {
+			restoreFloatingCard(card, false);
+		}
+		card.toFront();
+	}
+
+	private void minimizeFloatingCard(TitledPane card) {
+		minimizeFloatingCard(card, true);
+	}
+
+	private void minimizeFloatingCard(TitledPane card, boolean animate) {
+		if (card == null) {
+			return;
+		}
+		if (isFloatingCardMinimized(card)) {
+			return;
+		}
+		stopFloatingCardAnimation(card);
+		if (card.isExpanded() && card.getPrefHeight() > FLOATING_CARD_HEADER_HEIGHT) {
+			this.floatingCardNormalHeights.put(card, card.getPrefHeight());
+		}
+		if (!animate) {
+			card.setExpanded(false);
+			card.setMinHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setPrefHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setMaxHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setPickOnBounds(false);
+			renderGeometryScene();
+			return;
+		}
+
+		double currentHeight = card.getHeight() > FLOATING_CARD_HEADER_HEIGHT ? card.getHeight() : card.getPrefHeight();
+		if (currentHeight <= FLOATING_CARD_HEADER_HEIGHT) {
+			currentHeight = this.floatingCardNormalHeights.getOrDefault(card, FLOATING_CARD_HEADER_HEIGHT);
+		}
+		card.setExpanded(true);
+		card.setMinHeight(FLOATING_CARD_HEADER_HEIGHT);
+		card.setMaxHeight(Double.MAX_VALUE);
+		card.setPrefHeight(currentHeight);
+		animateFloatingCardHeight(card, FLOATING_CARD_HEADER_HEIGHT, () -> {
+			card.setExpanded(false);
+			card.setMinHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setPrefHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setMaxHeight(FLOATING_CARD_HEADER_HEIGHT);
+			card.setPickOnBounds(false);
+			renderGeometryScene();
+		});
+	}
+
+	private boolean isFloatingCardMinimized(TitledPane card) {
+		return !card.isExpanded() && card.getPrefHeight() <= FLOATING_CARD_HEADER_HEIGHT + 1;
+	}
+
+	private void restoreFloatingCard(TitledPane card) {
+		restoreFloatingCard(card, true);
+	}
+
+	private void restoreFloatingCard(TitledPane card, boolean animate) {
+		if (card == null) {
+			return;
+		}
+		stopFloatingCardAnimation(card);
+		double targetHeight = this.floatingCardNormalHeights.getOrDefault(card, card.getPrefHeight());
+		if (targetHeight <= FLOATING_CARD_HEADER_HEIGHT) {
+			targetHeight = 320.0;
+		}
+		if (!animate) {
+			card.setPickOnBounds(true);
+			card.setMinHeight(Region.USE_COMPUTED_SIZE);
+			card.setMaxHeight(Region.USE_COMPUTED_SIZE);
+			card.setPrefHeight(targetHeight);
+			card.setExpanded(true);
+			renderGeometryScene();
+			return;
+		}
+
+		card.setExpanded(true);
+		card.setPickOnBounds(true);
+		card.setMinHeight(FLOATING_CARD_HEADER_HEIGHT);
+		card.setMaxHeight(Double.MAX_VALUE);
+		card.setPrefHeight(Math.max(FLOATING_CARD_HEADER_HEIGHT, card.getHeight()));
+		double finalTargetHeight = targetHeight;
+		animateFloatingCardHeight(card, finalTargetHeight, () -> {
+			card.setMinHeight(Region.USE_COMPUTED_SIZE);
+			card.setMaxHeight(Region.USE_COMPUTED_SIZE);
+			card.setPrefHeight(finalTargetHeight);
+			renderGeometryScene();
+		});
+	}
+
+	private void stopFloatingCardAnimation(TitledPane card) {
+		Timeline timeline = this.floatingCardAnimations.remove(card);
+		if (timeline != null) {
+			timeline.stop();
+		}
+	}
+
+	private void animateFloatingCardHeight(TitledPane card, double targetHeight, Runnable onFinished) {
+		Timeline timeline = new Timeline(new KeyFrame(Duration.millis(180),
+				new KeyValue(card.prefHeightProperty(), targetHeight, Interpolator.EASE_BOTH)));
+		this.floatingCardAnimations.put(card, timeline);
+		timeline.setOnFinished(event -> {
+			if (this.floatingCardAnimations.get(card) != timeline) {
+				return;
+			}
+			this.floatingCardAnimations.remove(card);
+			if (onFinished != null) {
+				onFinished.run();
+			}
+		});
+		timeline.play();
+	}
+
+	private static double clamp(double value, double min, double max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
+	private void loadDefaultShapes() {
+		try {
+			File defaultShapes = resourceFile(DEFAULT_SHACL_RESOURCE);
+			LoadedShapes loaded = loadShapesFile(defaultShapes, DEFAULT_SHACL_RESOURCE);
+			this.loadedShapes.add(loaded);
+			this.shapeValidationItems.addAll(loaded.items());
+			if (this.validateStatusLabel != null) {
+				this.validateStatusLabel.setText("Loaded " + DEFAULT_SHACL_RESOURCE + ".");
+			}
+		} catch (Exception e) {
+			if (this.validateStatusLabel != null) {
+				this.validateStatusLabel.setText("Default SHACL load failed: " + e.getMessage());
+			}
+		}
+	}
+
+	private void loadShapesFileAsync(File shapeFile, String sourceName) {
+		if (this.loadShaclButton != null) {
+			this.loadShaclButton.setDisable(true);
+		}
+		if (this.validateStatusLabel != null) {
+			this.validateStatusLabel.setText("Loading " + sourceName + "...");
+		}
+		this.executor.submit(() -> {
+			try {
+				LoadedShapes loaded = loadShapesFile(shapeFile, sourceName);
+				Platform.runLater(() -> {
+					this.loadedShapes.add(loaded);
+					this.shapeValidationItems.addAll(loaded.items());
+					this.validateStatusLabel.setText("Loaded " + loaded.items().size() + " shapes from " + sourceName
+							+ ".");
+					this.shaclShapesList.refresh();
+					if (isValidationAvailable()) {
+						validateLoadedShapesAsync();
+					}
+				});
+			} catch (Exception e) {
+				Platform.runLater(() -> this.validateStatusLabel.setText("SHACL load failed: " + e.getMessage()));
+			} finally {
+				Platform.runLater(() -> this.loadShaclButton.setDisable(false));
+			}
+		});
+	}
+
+	private void removeShapeItem(ShapeValidationItem item) {
+		if (item == null) {
+			return;
+		}
+		for (LoadedShapes loaded : this.loadedShapes) {
+			loaded.items().remove(item);
+		}
+		this.loadedShapes.removeIf(loaded -> loaded.items().isEmpty());
+		this.shapeValidationItems.remove(item);
+		if (this.shaclShapesList != null) {
+			this.shaclShapesList.refresh();
+		}
+		if (this.validateStatusLabel != null) {
+			this.validateStatusLabel.setText("Removed " + item.displayName + ".");
+		}
+		if (isValidationAvailable() && !this.loadedShapes.isEmpty()) {
+			validateLoadedShapesAsync();
+		}
+	}
+
+	private LoadedShapes loadShapesFile(File shapeFile, String sourceName) {
+		Graph shapesGraph = RDFDataMgr.loadGraph(shapeFile.getAbsolutePath());
+		Shapes shapes = Shapes.parse(shapesGraph);
+		List<ShapeValidationItem> items = new ArrayList<>();
+		for (Shape shape : shapes.getTargetShapes()) {
+			items.add(new ShapeValidationItem(sourceName, formatShapeNode(shape.getShapeNode()), shape.getShapeNode(),
+					collectConstraintNodes(shape)));
+		}
+		if (items.isEmpty()) {
+			for (Shape shape : shapes) {
+				items.add(new ShapeValidationItem(sourceName, formatShapeNode(shape.getShapeNode()), shape.getShapeNode(),
+						collectConstraintNodes(shape)));
+			}
+		}
+		return new LoadedShapes(shapeFile, sourceName, shapes, items);
+	}
+
+	private void validateLoadedShapesAsync() {
+		long revision = ++this.validationRevision;
+		if (!isValidationAvailable()) {
+			setValidationAvailable(false);
+			return;
+		}
+		List<LoadedShapes> shapesToValidate = new ArrayList<>(this.loadedShapes);
+		if (shapesToValidate.isEmpty()) {
+			this.validateStatusLabel.setText("Load SHACL shapes before validating.");
+			return;
+		}
+		File outputFile = new File(this.lastSuccessfulConversionRequest.settings().rdfTargetName());
+		for (ShapeValidationItem item : this.shapeValidationItems) {
+			item.conforms = null;
+			item.message = "Validation pending.";
+		}
+		this.shaclShapesList.refresh();
+		this.validateStatusLabel.setText("Validating " + this.shapeValidationItems.size() + " shapes...");
+		this.executor.submit(() -> {
+			Model dataModel = null;
+			try {
+				dataModel = readOutputModel(outputFile);
+				List<ShapeValidationResult> updated = new ArrayList<>();
+				for (LoadedShapes loaded : shapesToValidate) {
+					ValidationReport report = ShaclValidator.get().validate(loaded.shapes(), dataModel.getGraph());
+					List<ShapeValidationItem> copies = loaded.items().stream().map(item -> new ShapeValidationItem(
+							item.sourceName, item.displayName, item.shapeNode, item.constraintNodes)).toList();
+					applyValidationReport(copies, report);
+					for (int i = 0; i < copies.size(); i++) {
+						ShapeValidationItem copy = copies.get(i);
+						updated.add(new ShapeValidationResult(loaded.items().get(i), copy.conforms, copy.message));
+					}
+				}
+				Platform.runLater(() -> publishValidationResults(revision, updated, outputFile.getName()));
+			} catch (Exception e) {
+				Platform.runLater(() -> {
+					if (revision == this.validationRevision)
+						this.validateStatusLabel.setText("Validation failed: " + e.getMessage());
+				});
+			} finally {
+				if (dataModel != null) dataModel.close();
+			}
+		});
+	}
+
+	private void publishValidationResults(long revision, List<ShapeValidationResult> updated, String outputName) {
+		if (revision != this.validationRevision) return;
+		for (ShapeValidationResult result : updated) {
+			result.item().conforms = result.conforms();
+			result.item().message = result.message();
+		}
+		long failureCount = updated.stream().filter(result -> Boolean.FALSE.equals(result.conforms())).count();
+		if (this.shaclShapesList != null) this.shaclShapesList.refresh();
+		if (this.validateStatusLabel != null)
+			this.validateStatusLabel.setText("Validated " + updated.size() + " shapes against "
+					+ outputName + ". Failed: " + failureCount + ".");
+	}
+
+	private void applyValidationReport(List<ShapeValidationItem> items, ValidationReport report) {
+		for (ShapeValidationItem item : items) {
+			item.conforms = true;
+			item.message = "Validation passed.";
+		}
+		Set<org.apache.jena.graph.Node> matchedFailureSources = new HashSet<>();
+		for (ReportEntry entry : report.getEntries()) {
+			org.apache.jena.graph.Node source = entry.source();
+			for (ShapeValidationItem item : items) {
+				if (source != null && item.constraintNodes.contains(source)) {
+					item.conforms = false;
+					item.message = entry.message() == null || entry.message().isBlank() ? "Validation failed."
+							: entry.message();
+					matchedFailureSources.add(source);
+				}
+			}
+		}
+	}
+
+	private static Set<org.apache.jena.graph.Node> collectConstraintNodes(Shape shape) {
+		Set<org.apache.jena.graph.Node> nodes = new HashSet<>();
+		collectConstraintNodes(shape, nodes);
+		return nodes;
+	}
+
+	private static void collectConstraintNodes(Shape shape, Set<org.apache.jena.graph.Node> nodes) {
+		nodes.add(shape.getShapeNode());
+		for (Shape propertyShape : shape.getPropertyShapes()) {
+			collectConstraintNodes(propertyShape, nodes);
+		}
+	}
+
+	private static String formatShapeNode(org.apache.jena.graph.Node node) {
+		if (node == null) {
+			return "Unnamed shape";
+		}
+		if (node.isURI()) {
+			String localName = node.getLocalName();
+			return localName == null || localName.isBlank() ? node.getURI() : localName;
+		}
+		if (node.isBlank()) {
+			return "_:" + node.getBlankNodeLabel();
+		}
+		return node.toString();
+	}
+
+	private static File resourceFile(String resourceName) throws IOException, URISyntaxException {
+		URL resourceUrl = IFCtoLBDController.class.getClassLoader().getResource(resourceName);
+		if (resourceUrl == null) {
+			throw new IOException("Resource not found: " + resourceName);
+		}
+		if ("file".equals(resourceUrl.getProtocol())) {
+			return new File(resourceUrl.toURI());
+		}
+		File tempFile = File.createTempFile(resourceName.replaceAll("[^A-Za-z0-9._-]", "_"), ".ttl");
+		tempFile.deleteOnExit();
+		try (InputStream input = resourceUrl.openStream()) {
+			Files.copy(input, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		}
+		return tempFile;
+	}
+
+	private static Model readOutputModel(File outputFile) {
+		Model model = ModelFactory.createDefaultModel();
+		try {
+			Lang language = RDFLanguages.filenameToLang(outputFile.getName(), Lang.TURTLE);
+			RDFDataMgr.read(model, outputFile.getAbsolutePath(), language);
+			return model;
+		} catch (RuntimeException e) {
+			model.close();
+			throw e;
+		}
+	}
+
+	private String executeSparqlQuery(Model model, String queryText) {
+		Query query = QueryFactory.create(queryText);
+		try (QueryExecution queryExecution = QueryExecutionFactory.create(query, model)) {
+			if (query.isSelectType()) {
+				return formatSelectResults(queryExecution.execSelect());
+			}
+			if (query.isAskType()) {
+				return "ASK result: " + queryExecution.execAsk();
+			}
+			if (query.isConstructType()) {
+				return serializeQueryModel(queryExecution.execConstruct());
+			}
+			if (query.isDescribeType()) {
+				return serializeQueryModel(queryExecution.execDescribe());
+			}
+		}
+		return "Unsupported SPARQL query type.";
+	}
+
+	private String formatSelectResults(ResultSet resultSet) {
+		List<String> variables = resultSet.getResultVars();
+		StringBuilder output = new StringBuilder();
+		output.append(String.join("\t", variables)).append("\n");
+		int rowCount = 0;
+		while (resultSet.hasNext() && rowCount < MAX_SPARQL_RESULT_ROWS) {
+			QuerySolution solution = resultSet.nextSolution();
+			for (int i = 0; i < variables.size(); i++) {
+				if (i > 0) {
+					output.append('\t');
+				}
+				RDFNode node = solution.get(variables.get(i));
+				if (node != null) {
+					output.append(formatSparqlNode(node));
+				}
+			}
+			output.append('\n');
+			rowCount++;
+		}
+		if (rowCount == 0) {
+			output.append("No results.\n");
+		} else {
+			output.append("\nRows: ").append(rowCount);
+			if (resultSet.hasNext()) {
+				output.append(" (limited to ").append(MAX_SPARQL_RESULT_ROWS).append(")");
+			}
+			output.append('\n');
+		}
+		return output.toString();
+	}
+
+	private static String formatSparqlNode(RDFNode node) {
+		if (node.isLiteral()) {
+			return node.asLiteral().getString();
+		}
+		if (node.isResource() && node.asResource().isURIResource()) {
+			return node.asResource().getURI();
+		}
+		return node.toString();
+	}
+
+	private static String serializeQueryModel(Model model) {
+		StringBuilder output = new StringBuilder();
+		model.write(new StringBuilderWriter(output), "TURTLE");
+		if (output.isEmpty()) {
+			return "No triples.";
+		}
+		return output.toString();
+	}
+
+	private static class StringBuilderWriter extends java.io.Writer {
+		private final StringBuilder output;
+
+		private StringBuilderWriter(StringBuilder output) {
+			this.output = output;
+		}
+
+		@Override
+		public void write(char[] cbuf, int off, int len) {
+			this.output.append(cbuf, off, len);
+		}
+
+		@Override
+		public void flush() {
+		}
+
+		@Override
+		public void close() {
+		}
+	}
+
+	private void clearGeometryPreview(String message) {
+		this.currentPreviewMesh = null;
+		renderGeometryScene();
+		appendGeometryPreviewMessage(message);
+	}
+
+	private void scheduleGeometryPreview(ConversionSettings settings) {
+		if (settings == null || !settings.hasGeometry()) {
+			Platform.runLater(() -> clearGeometryPreview("Geometry was not selected for this conversion."));
+			return;
+		}
+		File rdfFile = new File(settings.rdfTargetName());
+		if (!rdfFile.isFile()) {
+			Platform.runLater(() -> clearGeometryPreview("Geometry preview unavailable: output RDF file was not found."));
+			return;
+		}
+		Platform.runLater(() -> appendGeometryPreviewMessage("Loading geometry preview..."));
+		this.executor.submit(() -> {
+			try {
+				PreviewMesh previewMesh = loadPreviewMesh(rdfFile);
+				Platform.runLater(() -> {
+					try {
+						showPreviewMesh(previewMesh);
+					} catch (Exception e) {
+						clearGeometryPreview("Geometry preview rendering failed: " + e.getMessage());
+					}
+				});
+			} catch (Exception e) {
+				Platform.runLater(() -> clearGeometryPreview("Geometry preview failed: " + e.getMessage()));
+			}
+		});
+	}
+
+	private PreviewMesh loadPreviewMesh(File rdfFile) throws IOException {
+		ObjMeshBuilder builder = new ObjMeshBuilder(MAX_PREVIEW_POINTS, MAX_PREVIEW_TRIANGLES);
+		Model model = readOutputModel(rdfFile);
+		try {
+			Property objProperty = model.createProperty(GEOMETRY_OBJ_PROPERTY);
+			Property materialColorProperty = model.createProperty(GEOMETRY_MTL_KD_PROPERTY);
+			Property materialProperty = model.createProperty(GEOMETRY_MTL_PROPERTY);
+			var geometries = model.listStatements(null, objProperty, (RDFNode) null);
+			while (geometries.hasNext() && !builder.clipped()) {
+				Statement geometry = geometries.next();
+				if (!geometry.getObject().isLiteral()) continue;
+				int color = geometryColor(geometry.getSubject(), materialColorProperty, materialProperty);
+				try {
+					String obj = new String(Base64.getDecoder().decode(
+							geometry.getString()), StandardCharsets.UTF_8);
+					builder.addObj(obj, color);
+				} catch (IllegalArgumentException ignored) {
+					// Ignore malformed geometry literals and continue with the remaining geometry.
+				}
+			}
+		} finally {
+			model.close();
+		}
+		return builder.toPreviewMesh();
+	}
+
+	private static int geometryColor(Resource geometry, Property materialColorProperty, Property materialProperty) {
+		Statement color = geometry.getProperty(materialColorProperty);
+		if (color != null && color.getObject().isLiteral()) {
+			return parseHexColor(color.getString());
+		}
+		Statement material = geometry.getProperty(materialProperty);
+		if (material != null && material.getObject().isLiteral()) {
+			return parseMtlDiffuseColor(material.getString(), DEFAULT_PREVIEW_COLOR);
+		}
+		return DEFAULT_PREVIEW_COLOR;
+	}
+
+	private void showPreviewMesh(PreviewMesh previewMesh) {
+		if (previewMesh.triangleCount() == 0) {
+			if (previewMesh.objectCount() == 0) {
+				clearGeometryPreview("No OBJ geometry literals were found in the converted RDF.");
+			} else {
+				clearGeometryPreview("Found " + previewMesh.objectCount() + " OBJ geometry objects, but no faces were parsed.");
+			}
+			return;
+		}
+
+		this.currentPreviewMesh = previewMesh;
+		fitGeometryPreview();
+		renderGeometryScene();
+		appendGeometryPreviewMessage(previewMesh.statusText());
+	}
+
+	private void appendGeometryPreviewMessage(String message) {
+		if (this.conversionTxt != null && message != null && !message.isBlank()) {
+			this.conversionTxt.appendText("Geometry preview: " + message + "\n");
+		}
+	}
+
+	private void fitGeometryPreview() {
+		this.geometryZoom = 1.0;
+		this.geometryRotateX.setAngle(-25);
+		this.geometryRotateY.setAngle(-35);
+		if (this.geometryModelRoot != null) {
+			this.geometryModelRoot.setTranslateX(0);
+			this.geometryModelRoot.setTranslateY(0);
+		}
+		updateGeometryCamera();
+	}
+
+	private void updateGeometryCamera() {
+		this.geometryCameraDistance.setZ(-760.0 / this.geometryZoom);
+	}
+
+	private void renderGeometryScene() {
+		if (this.geometryModelRoot == null) {
+			return;
+		}
+		this.geometryModelRoot.getChildren().clear();
+		if (this.currentPreviewMesh == null || this.currentPreviewMesh.triangleCount() == 0) {
+			return;
+		}
+
+		float[] points = this.currentPreviewMesh.points();
+		int[] faces = this.currentPreviewMesh.faces();
+		int[] triangleColors = this.currentPreviewMesh.triangleColors();
+		Map<Integer, List<Integer>> facesByColor = new LinkedHashMap<>();
+		for (int faceOffset = 0; faceOffset + 5 < faces.length; faceOffset += 6) {
+			int colorIndex = faceOffset / 6;
+			int color = colorIndex < triangleColors.length ? triangleColors[colorIndex] : DEFAULT_PREVIEW_COLOR;
+			facesByColor.computeIfAbsent(color, ignored -> new ArrayList<>()).add(faceOffset);
+		}
+
+		for (Map.Entry<Integer, List<Integer>> entry : facesByColor.entrySet()) {
+			TriangleMesh mesh = new TriangleMesh();
+			mesh.getPoints().setAll(points);
+			mesh.getTexCoords().setAll(0, 0);
+			int[] colorFaces = new int[entry.getValue().size() * 6];
+			int writeIndex = 0;
+			for (int faceOffset : entry.getValue()) {
+				colorFaces[writeIndex++] = faces[faceOffset];
+				colorFaces[writeIndex++] = 0;
+				colorFaces[writeIndex++] = faces[faceOffset + 2];
+				colorFaces[writeIndex++] = 0;
+				colorFaces[writeIndex++] = faces[faceOffset + 4];
+				colorFaces[writeIndex++] = 0;
+			}
+			mesh.getFaces().setAll(colorFaces);
+			mesh.getFaceSmoothingGroups().setAll(new int[entry.getValue().size()]);
+
+			MeshView meshView = new MeshView(mesh);
+			meshView.setCullFace(CullFace.NONE);
+			meshView.setDrawMode(DrawMode.FILL);
+			meshView.setMaterial(createPreviewMaterial(entry.getKey()));
+			this.geometryModelRoot.getChildren().add(meshView);
+		}
+	}
+
+	private static int parseHexColor(String value) {
+		if (value == null || !value.matches("#[0-9a-fA-F]{6}")) {
+			return DEFAULT_PREVIEW_COLOR;
+		}
+		return Integer.parseInt(value.substring(1), 16);
+	}
+
+	private static int parseMtlDiffuseColor(String escapedMtl, int fallbackColor) {
+		String material = escapedMtl.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", "\"")
+				.replace("\\\\", "\\");
+		Matcher matcher = MTL_KD_LINE_PATTERN.matcher(material);
+		if (!matcher.find()) {
+			return fallbackColor;
+		}
+		return toRgb(parseUnitColorChannel(matcher.group(1)), parseUnitColorChannel(matcher.group(2)),
+				parseUnitColorChannel(matcher.group(3)));
+	}
+
+	private static int toRgb(int red, int green, int blue) {
+		return (red << 16) | (green << 8) | blue;
+	}
+
+	private static int parseUnitColorChannel(String value) {
+		double channel = Double.parseDouble(value);
+		return (int) Math.round(clamp(channel, 0, 1) * 255.0);
+	}
+
+	private static PhongMaterial createPreviewMaterial(int rgb) {
+		int red = (rgb >> 16) & 0xff;
+		int green = (rgb >> 8) & 0xff;
+		int blue = rgb & 0xff;
+		Color diffuse = Color.rgb(softenColorChannel(red), softenColorChannel(green), softenColorChannel(blue));
+		PhongMaterial material = new PhongMaterial(diffuse);
+		material.setSpecularColor(Color.rgb(42, 42, 42));
+		material.setSpecularPower(4);
+		return material;
+	}
+
+	private static int softenColorChannel(int channel) {
+		return (int) Math.round(channel * 0.78 + 245 * 0.22);
+	}
+
+	private record PreviewMesh(float[] points, int[] faces, int[] triangleColors, int objectCount, int triangleCount,
+			boolean clipped) {
+		private String statusText() {
+			if (clipped) {
+				return "Preview clipped at " + triangleCount + " triangles from " + objectCount + " geometry objects.";
+			}
+			return objectCount + " geometry objects, " + triangleCount + " triangles.";
+		}
+	}
+
+	private static class ObjMeshBuilder {
+		private final int maxPoints;
+		private final int maxTriangles;
+		private final List<double[]> rawPoints = new ArrayList<>();
+		private final List<int[]> triangles = new ArrayList<>();
+		private final List<Integer> triangleColors = new ArrayList<>();
+		private int objectCount;
+		private boolean clipped;
+		private double minX = Double.POSITIVE_INFINITY;
+		private double minY = Double.POSITIVE_INFINITY;
+		private double minZ = Double.POSITIVE_INFINITY;
+		private double maxX = Double.NEGATIVE_INFINITY;
+		private double maxY = Double.NEGATIVE_INFINITY;
+		private double maxZ = Double.NEGATIVE_INFINITY;
+
+		private ObjMeshBuilder(int maxPoints, int maxTriangles) {
+			this.maxPoints = maxPoints;
+			this.maxTriangles = maxTriangles;
+		}
+
+		private boolean clipped() {
+			return this.clipped;
+		}
+
+		private void addObj(String obj, int color) {
+			if (this.clipped) {
+				return;
+			}
+			this.objectCount++;
+			List<double[]> localVertices = new ArrayList<>();
+			for (String rawLine : obj.split("\\R")) {
+				String line = rawLine.strip();
+				if (line.startsWith("v ")) {
+					addLocalVertex(line, localVertices);
+				} else if (line.startsWith("f ")) {
+					addFace(line, localVertices, color);
+				}
+				if (this.clipped) {
+					return;
+				}
+			}
+		}
+
+		private void addLocalVertex(String line, List<double[]> localVertices) {
+			if (this.rawPoints.size() >= this.maxPoints) {
+				this.clipped = true;
+				return;
+			}
+			String[] parts = line.split("\\s+");
+			if (parts.length < 4) {
+				return;
+			}
+			double x = parseDouble(parts[1]);
+			double y = parseDouble(parts[2]);
+			double z = parseDouble(parts[3]);
+			double[] point = new double[] { x, y, z };
+			localVertices.add(point);
+			this.rawPoints.add(point);
+			this.minX = Math.min(this.minX, x);
+			this.minY = Math.min(this.minY, y);
+			this.minZ = Math.min(this.minZ, z);
+			this.maxX = Math.max(this.maxX, x);
+			this.maxY = Math.max(this.maxY, y);
+			this.maxZ = Math.max(this.maxZ, z);
+		}
+
+		private void addFace(String line, List<double[]> localVertices, int color) {
+			String[] parts = line.split("\\s+");
+			if (parts.length < 4) {
+				return;
+			}
+			List<Integer> indexes = new ArrayList<>();
+			int globalBase = this.rawPoints.size() - localVertices.size();
+			for (int i = 1; i < parts.length; i++) {
+				int pointIndex = parseObjIndex(parts[i], localVertices.size(), globalBase, this.rawPoints.size());
+				if (pointIndex >= 0) {
+					indexes.add(pointIndex);
+				}
+			}
+			for (int i = 1; i < indexes.size() - 1; i++) {
+				if (this.triangles.size() >= this.maxTriangles) {
+					this.clipped = true;
+					return;
+				}
+				this.triangles.add(new int[] { indexes.get(0), indexes.get(i), indexes.get(i + 1) });
+				this.triangleColors.add(color);
+			}
+		}
+
+		private PreviewMesh toPreviewMesh() {
+			if (this.rawPoints.isEmpty() || this.triangles.isEmpty()) {
+				return new PreviewMesh(new float[0], new int[0], new int[0], this.objectCount, 0, this.clipped);
+			}
+			double centerX = (this.minX + this.maxX) / 2.0;
+			double centerY = (this.minY + this.maxY) / 2.0;
+			double centerZ = (this.minZ + this.maxZ) / 2.0;
+			double span = Math.max(this.maxX - this.minX, Math.max(this.maxY - this.minY, this.maxZ - this.minZ));
+			double scale = span == 0 ? 1 : 260.0 / span;
+
+			float[] points = new float[this.rawPoints.size() * 3];
+			for (int i = 0; i < this.rawPoints.size(); i++) {
+				double[] point = this.rawPoints.get(i);
+				points[i * 3] = (float) ((point[0] - centerX) * scale);
+				points[i * 3 + 1] = (float) (-(point[2] - centerZ) * scale);
+				points[i * 3 + 2] = (float) ((point[1] - centerY) * scale);
+			}
+
+			int[] faces = new int[this.triangles.size() * 6];
+			int[] colors = new int[this.triangles.size()];
+			for (int i = 0; i < this.triangles.size(); i++) {
+				int[] triangle = this.triangles.get(i);
+				faces[i * 6] = triangle[0];
+				faces[i * 6 + 1] = 0;
+				faces[i * 6 + 2] = triangle[1];
+				faces[i * 6 + 3] = 0;
+				faces[i * 6 + 4] = triangle[2];
+				faces[i * 6 + 5] = 0;
+				colors[i] = this.triangleColors.get(i);
+			}
+			return new PreviewMesh(points, faces, colors, this.objectCount, this.triangles.size(), this.clipped);
+		}
+
+		private static int parseObjIndex(String token, int localVertexCount, int globalBase, int globalPointCount) {
+			String indexPart = token.split("/", -1)[0];
+			if (indexPart.isBlank()) {
+				return -1;
+			}
+			int objIndex = Integer.parseInt(indexPart);
+			if (objIndex < 0) {
+				int localIndex = localVertexCount + objIndex;
+				return localIndex >= 0 && localIndex < localVertexCount ? globalBase + localIndex : -1;
+			}
+			if (objIndex >= 1 && objIndex <= localVertexCount) {
+				return globalBase + objIndex - 1;
+			}
+			if (objIndex >= 0 && objIndex < localVertexCount) {
+				return globalBase + objIndex;
+			}
+			if (objIndex >= 0 && objIndex < globalPointCount) {
+				return objIndex;
+			}
+			if (objIndex >= 1 && objIndex <= globalPointCount) {
+				return objIndex - 1;
+			}
+			return -1;
+		}
+
+		private static double parseDouble(String value) {
+			return Double.parseDouble(value.replace(',', '.'));
+		}
+	}
+
+	@FXML
+	private void convertIFCToRDF() {
+		ConversionSettings currentSettings = currentSettings();
+		if (currentSettings.ifcFileName() == null || currentSettings.rdfTargetName() == null) {
+			this.conversionTxt.appendText("Select IFC and target files before conversion.\n");
+			return;
+		}
+		if (this.running_read_in == null) {
+			this.conversionTxt.appendText("Read-in has not started yet.\n");
+			return;
+		}
+		if (!this.running_read_in.isDone()) {
+			this.conversionTxt.appendText("Read-in is still running. Start conversion after it finishes.\n");
+			return;
+		}
+		if (hasReadInSettingsChanged(this.readInSettings, currentSettings)) {
+			try {
+				this.running_read_in.get();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				this.conversionTxt.appendText("Read-in was interrupted.\n");
+				return;
+			} catch (ExecutionException e) {
+				this.conversionTxt.appendText("Read-in failed: " + e.getMessage() + "\n");
+				return;
+			}
+			this.conversionTxt.appendText("Re-running initial read due to changed settings.\n");
+			readInIFCExecute(currentSettings);
+			this.conversionTxt.appendText("Start conversion after read-in finishes.\n");
+			return;
+		}
+
+		persistSettings(currentSettings);
+			this.conversionTxt.setText("");
+			try {
+				if (this.running_conversion != null && !this.running_conversion.isDone()) {
+					this.conversionTxt.appendText("\nThe last conversion is still running. \n");
+					return;
+				}
+				setWorkflowDataAvailable(isFiltersAvailable(), false, false);
+				this.options_panel.setDisable(true);
+
+			Set<String> selected_types = selectedElementTypes();
+			Set<String> selected_psets = selectedPropertySets();
+					IFCtoLBDConverter converter = this.running_read_in.get();
+					if (converter == null) {
+						this.conversionTxt.appendText("Read-in failed. Conversion cannot continue.\n");
+						this.options_panel.setDisable(false);
+						return;
+					}
+				converter.setTargetFile(currentSettings.rdfTargetName());
+				converter.setHasSimplified_properties(currentSettings.hasSimpleProperties());
+				converter.setPropertiesAsPropertySets(currentSettings.propertiesAsPropertySets());
+				ConversionRequest conversionRequest = new ConversionRequest(currentSettings, selected_types, selected_psets);
+				this.pendingConversionRequest = conversionRequest;
+				if (!currentSettings.hasSeparateBuildingElementsModel()
+						&& !hasConversionRequestChanged(this.lastSuccessfulConversionRequest, conversionRequest)) {
+					this.running_conversion = this.executor.submit(() -> {
+						try {
+							if (currentSettings.exportAsIcdd()) {
+								converter.exportExistingOutputAsIcdd(currentSettings.rdfTargetName(),
+										currentSettings.ifcFileName());
+							} else {
+								converter.exportExistingOutput(currentSettings.rdfTargetName(),
+										currentSettings.hasSeparatePropertiesModel(), currentSettings.createTrig(),
+										currentSettings.exportAsJsonLd());
+							}
+							this.eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.CONVERT));
+						} catch (Exception e) {
+							this.eventBus.post(new IFCtoLBD_SystemStatusEvent(e.getMessage()));
+							this.eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR));
+						}
+						return 0;
+					});
+					return;
+				}
+			this.running_conversion = this.executor.submit(new ConversionThread(converter, selected_types, selected_psets,
+					currentSettings.ifcFileName(), currentSettings.baseUri(), currentSettings.rdfTargetName(),
+					currentSettings.propsLevel(), currentSettings.hasBuildingElements(),
+					currentSettings.hasSeparateBuildingElementsModel(), currentSettings.hasBuildingProperties(),
+					currentSettings.hasSeparatePropertiesModel(), currentSettings.hasPropertiesBlankNodes(),
+					currentSettings.hasGeolocation(), currentSettings.hasGeometry(), currentSettings.exportIfcOwl(),
+					currentSettings.hasUnits(), currentSettings.hasPerformanceBoost(),
+					currentSettings.hasBoundingBoxWkt(), currentSettings.hasHierarchicalNaming(),
+					currentSettings.hasIfcBasedElements(), currentSettings.hasInterfaces(), currentSettings.createTrig(),
+					currentSettings.exportAsJsonLd(), currentSettings.exportAsIcdd(),
+					currentSettings.hasElementWireframe(),
+					currentSettings.propertiesAsPropertySets()));
+		} catch (Exception e) {
+			Platform.runLater(() -> this.conversionTxt.appendText(e.getMessage()));
+		}
+	}
+
+	@Override
+	public void initialize(URL location, ResourceBundle resources) {
+		this.eventBus.register(this);
+		this.border.widthProperty().bind(this.root.widthProperty());
+		this.border.heightProperty().bind(this.root.heightProperty());
+		setupCommandLinePreview();
+		setupGeometryPreview();
+		setupSparqlQueryWindow();
+		setupValidateWindow();
+		setupFloatingCards();
+		setWorkflowDataAvailable(false, false, false);
+		// Accepts dropping
+		new EventHandler<DragEvent>() {
+			@Override
+			public void handle(DragEvent event) {
+				Dragboard db = event.getDragboard();
+				if (db.hasFiles()) {
+					event.acceptTransferModes(TransferMode.COPY);
+				} else {
+					event.consume();
+				}
+			}
+
+		};
+
+		// Accepts dropping
+		EventHandler<DragEvent> ad_conversion = new EventHandler<>() {
+			public void handle(DragEvent event) {
+				Dragboard db = event.getDragboard();
+				if (db.hasFiles()) {
+					event.acceptTransferModes(TransferMode.COPY);
+				} else {
+					event.consume();
+				}
+			}
+		};
+
+		// Dropping over surface
+		EventHandler<DragEvent> dh_conversion = new EventHandler<>() {
+			public void handle(DragEvent event) {
+				Dragboard db = event.getDragboard();
+				boolean success = false;
+					if (db.hasFiles()) {
+						success = true;
+						for (File file : db.getFiles()) {
+							IFCtoLBDController.this.setIfcFileLabel(file.getName());
+							IFCtoLBDController.this.ifcFileName = file.getAbsolutePath();
+							int dotIndex = file.getName().lastIndexOf(".");
+							if (dotIndex > 0) {
+								String targetDirectory = IFCtoLBDController.this.prefs.get("ifc_target_directory",
+										file.getParentFile().getAbsolutePath());
+								if (!new File(targetDirectory).exists()) {
+									targetDirectory = file.getParent();
+								}
+								if (targetDirectory.endsWith("\\")) {
+									IFCtoLBDController.this.rdfTargetName = targetDirectory
+											+ file.getName().substring(0, dotIndex) + "_LBD"
+											+ IFCtoLBDController.this.selectedOutputExtension();
+								} else {
+									IFCtoLBDController.this.rdfTargetName = targetDirectory + File.separator
+											+ file.getName().substring(0, dotIndex) + "_LBD"
+											+ IFCtoLBDController.this.selectedOutputExtension();
+								}
+								IFCtoLBDController.this.setTargetFileLabel(IFCtoLBDController.this.rdfTargetName);
+							}
+							if (IFCtoLBDController.this.ifcFileName != null && IFCtoLBDController.this.rdfTargetName != null) {
+								IFCtoLBDController.this.selectTargetFileButton.setDisable(false);
+								IFCtoLBDController.this.setSelectIfcDefault(false);
+								IFCtoLBDController.this.prefs.put("ifc_work_directory", file.getParentFile().getAbsolutePath());
+								IFCtoLBDController.this.readInIFC();
+							}
+					}
+				}
+				event.setDropCompleted(success);
+				event.consume();
+			}
+		};
+
+		setDropHandlers(this.selectIFCFileButton, ad_conversion, dh_conversion);
+		setDropHandlers(this.basicSelectIFCFileButton, ad_conversion, dh_conversion);
+		setDropHandlers(this.convert2RDFButton, ad_conversion, dh_conversion);
+		setDropHandlers(this.basicConvert2RDFButton, ad_conversion, dh_conversion);
+		setDropHandlers(this.labelIFCFile, ad_conversion, dh_conversion);
+		setDropHandlers(this.basicLabelIFCFile, ad_conversion, dh_conversion);
+		setDropHandlers(this.conversionTxt, ad_conversion, dh_conversion);
+
+		this.labelBaseURI
+				.setText(this.prefs.get("lbd_props_base_url", "https://www.ugent.be/myAwesomeFirstBIMProject#"));
+		this.building_elements.setSelected(this.prefs.getBoolean("lbd_building_elements", true));
+		this.building_elements_separate_file
+				.setSelected(this.prefs.getBoolean("lbd_building_elements_separate_file", false));
+		this.building_props.setSelected(this.prefs.getBoolean("lbd_building_props", true));
+		this.building_props_blank_nodes.setSelected(this.prefs.getBoolean("lbd_building_props_blank_nodes", false));
+		this.building_props_separate_file.setSelected(this.prefs.getBoolean("lbd_building_props_separate_file", false));
+
+		this.geometry_elements.setSelected(this.prefs.getBoolean("lbd_boundinbox_elements", true));
+		this.geometry_interfaces.setSelected(this.prefs.getBoolean("lbd_boundinbox_interfaces", false));
+		this.hasBoundingBox_WKT.setSelected(this.prefs.getBoolean("lbd_boundinbox_wkt", false));
+		this.hasElementWireframe.setSelected(this.prefs.getBoolean("lbd_element_wireframe", false));
+		this.ifcOWL_elements.setSelected(this.prefs.getBoolean("lbd_ifcOWL_elements", false));
+		this.createUnits.setSelected(this.prefs.getBoolean("lbd_createUnits", false));
+		this.geolocation.setSelected(this.prefs.getBoolean("lbd_geolocation", true));
+		
+		this.hasHierarchicalNaming.setSelected(this.prefs.getBoolean("lbd_hasHierarchicalNaming", false));
+		this.hasSimpleProperties.setSelected(this.prefs.getBoolean("lbd_hasSimpleProperties", false));
+		this.propertiesAsPropertySets.setSelected(this.prefs.getBoolean("lbd_propertiesAsPropertySets", false));
+		this.propertiesAsPropertySets.setTooltip(new Tooltip(
+				"Export bSDD-typed property-set resources containing OPM properties and current value states."));
+
+		this.ifc_based_elements.setSelected(this.prefs.getBoolean("ifc_based_elements", false));
+		this.createTrig.setSelected(this.prefs.getBoolean("createTrig", false));
+		
+		this.hasPerformanceBoost.setSelected(this.prefs.getBoolean("lbd_performance", true));
+		if (this.ifcOWL_elements.isSelected()) {
+			this.hasPerformanceBoost.setSelected(false);
+			this.hasPerformanceBoost.setDisable(true);
+		} else {
+			this.hasPerformanceBoost.setDisable(false);
+		}
+
+		int props_level = this.prefs.getInt("lbd_props_level", 1);
+		switch (props_level) {
+		case 1:
+			this.level1.setSelected(true);
+			this.level2.setSelected(false);
+			this.level3.setSelected(false);
+			break;
+		case 2:
+			this.level1.setSelected(false);
+			this.level2.setSelected(true);
+			this.level3.setSelected(false);
+			break;
+		case 3:
+			this.level1.setSelected(false);
+			this.level2.setSelected(false);
+			this.level3.setSelected(true);
+			break;
+		default:
+			this.level1.setSelected(true);
+			this.level2.setSelected(false);
+			this.level3.setSelected(false);
+			break;
+
+		}
+
+		
+		
+		setupTargetFileEditor();
+		setupOutputFormatChoices();
+        
+        
+		this.building_elements.setTooltip(new Tooltip(
+				"Building Product Ontology instances. \nThis is described in: https://github.com/w3c-lbd-cg/product"));
+		this.building_elements_separate_file.setTooltip(new Tooltip("Create the content in separate files."));
+		this.building_props.setTooltip(new Tooltip(
+				"Building related properties\nThis is dedcribed in: https://github.com/w3c-lbd-cg/lbd/blob/gh-pages/presentations/props/presentation_LBDcall_20180312_final.pdf"));
+		this.building_props_separate_file
+				.setTooltip(new Tooltip("Create the content in separate files (Only levels 2 or 3)."));
+
+		this.elements_link.setTooltip(new Tooltip("Opens a link that describes the Building Product Ontology."));
+
+		this.props_link.setTooltip(new Tooltip("Opens a link to the Towards a PROPS ontology presentation."));
+		this.opm_link.setTooltip(new Tooltip("Opens a link that describes the Ontology for Property Management."));
+
+		String selectIfcTooltip = "Select an IFC Step formatted file to convert.\nThe supported IFC versions are\n2x3 TC1 & Final, 4 ADD1, 4 ADD2, 4  ";
+		this.selectIFCFileButton.setTooltip(new Tooltip(selectIfcTooltip));
+		this.basicSelectIFCFileButton.setTooltip(new Tooltip(selectIfcTooltip));
+		this.selectTargetFileButton.setTooltip(new Tooltip(
+				"Select an target file for the conversion.\nIf there will be many files, the separate files are named accorrdingly."));
+		String runTooltip = "Press this button to start the conversion process.";
+		this.convert2RDFButton.setTooltip(new Tooltip(runTooltip));
+		this.basicConvert2RDFButton.setTooltip(new Tooltip(runTooltip));
+		this.conversionTxt.setTooltip(
+				new Tooltip("This shows the conversion process related messages\nand any error that occurs. "));
+
+		String ifcFileTooltip = "The selected IFC file. ";
+		this.labelIFCFile.setTooltip(new Tooltip(ifcFileTooltip));
+		this.basicLabelIFCFile.setTooltip(new Tooltip(ifcFileTooltip));
+
+		this.labelTargetFile.setTooltip(new Tooltip("The selected target RDF file. "));
+
+		this.labelBaseURI
+				.setTooltip(new Tooltip("The base URL is the consistent part of your links generated in the output. "));
+
+		this.hasPerformanceBoost.setTooltip(
+				new Tooltip("When used, the memory consumption is saved by removing the ifcOWL geometry. "));
+
+		this.geometry_interfaces.setTooltip(
+				new Tooltip("Creates bounding box based BOT interfaces. "));
+
+		this.hasElementWireframe.setTooltip(
+				new Tooltip("Exports simple mesh wireframes as lbd:hasWireframe WKT literals. "));
+		
+		this.createTrig.setTooltip(
+				new Tooltip("If selected, creates also a RDF 1.1. TriG file (https://www.w3.org/TR/trig/). "));
+	
+	}
+
+	@Override
+	public void handle_notification(String txt) {
+		this.conversionTxt.insertText(0, txt + "\n");
+	}
+
+	public void shutdown() {
+		if (this.running_read_in != null && !this.running_read_in.isDone()) {
+			this.running_read_in.cancel(true);
+		}
+		if (this.running_conversion != null && !this.running_conversion.isDone()) {
+			this.running_conversion.cancel(true);
+		}
+		this.executor.shutdownNow();
+		try {
+			this.eventBus.unregister(this);
+		} catch (IllegalArgumentException ignored) {
+			// Already unregistered or not registered.
+		}
+	}
+
+	@Subscribe
+	public void handleEvent(final IFCtoLBD_SystemStatusEvent event) {
+		System.out.println("message: " + event.getStatus_message());
+		Platform.runLater(() -> this.conversionTxt.appendText(event.getStatus_message() + "\n"));
+	}
+
+	@Subscribe
+	public void handleEvent(final IFCtoLBD_SystemErrorEvent event) {
+		System.out.println("error: " + event.getStatus_message());
+		Platform.runLater(
+				() -> this.conversionTxt.appendText(event.getClass_name() + ": " + event.getStatus_message() + "\n"));
+	}
+
+	@Subscribe
+		public void handleEvent(final ProcessReadyEvent event) {
+			Platform.runLater(() -> {
+				this.options_panel.setDisable(false);
+			});
+
+		if (event.getPhase() == ProcessReadyEvent.READ_IN) {
+			Platform.runLater(() -> {
+				// prepare tree items
+				try {
+					IFCtoLBDConverter converter = this.running_read_in.get();
+					Set<Resource> element_types = converter.getElementTypes();
+					Map<String, Integer> element_type_counts = converter.getElementTypeCounts();
+					CheckBoxTreeItem<String> types_checkbox_values = new CheckBoxTreeItem<>("Model");
+
+					types_checkbox_values.getChildren().clear();
+					// add items to the root
+					for (Resource et : element_types) {
+						String typeName = et.getLocalName();
+						CheckBoxTreeItem<String> item = new CheckBoxTreeItem<>(typeName + " (" + element_type_counts.getOrDefault(typeName, 0) + ")");
+						item.setSelected(true);
+						types_checkbox_values.getChildren().add(item);
+
+					}
+					types_checkbox_values.setExpanded(true);
+					
+					Set<String> pset_names = converter.getPropertySetNames();
+
+					this.element_types_checkbox.setRoot(types_checkbox_values);
+					this.element_types_checkbox.setShowRoot(true);
+					
+					
+					CheckBoxTreeItem<String> psets_checkbox_values = new CheckBoxTreeItem<>("PSets");
+
+					psets_checkbox_values.getChildren().clear();
+					// add items to the root
+					for (String ps_name : pset_names) {
+						CheckBoxTreeItem<String> item = new CheckBoxTreeItem<>(ps_name);
+						item.setSelected(true);
+						psets_checkbox_values.getChildren().add(item);
+
+					}
+					psets_checkbox_values.setExpanded(true);
+					
+					this.propertysets_checkbox.setRoot(psets_checkbox_values);
+					this.propertysets_checkbox.setShowRoot(true);
+					setWorkflowDataAvailable(true, false, false);
+					setRunReady(true);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				} catch (ExecutionException e) {
+					setWorkflowDataAvailable(false, false, false);
+					setRunReady(false);
+					e.printStackTrace();
+				}
+			});
+		}
+		if (event.getPhase() == ProcessReadyEvent.CONVERT) {
+			Platform.runLater(() -> {
+				ConversionRequest successfulRequest = this.pendingConversionRequest;
+				this.lastSuccessfulConversionRequest = successfulRequest;
+				this.pendingConversionRequest = null;
+				if (successfulRequest != null) {
+					if (successfulRequest.settings().exportAsIcdd()) {
+						clearGeometryPreview("Geometry preview is unavailable for packaged ICDD output.");
+					} else {
+						scheduleGeometryPreview(successfulRequest.settings());
+					}
+					String outputPath = new File(successfulRequest.settings().rdfTargetName()).getAbsolutePath();
+					this.conversionTxt.appendText((successfulRequest.settings().exportAsIcdd()
+							? "ICDD package written to: " : "LBD file written to: ") + outputPath + "\n");
+					boolean queryAvailable = !successfulRequest.settings().exportAsIcdd()
+							&& new File(successfulRequest.settings().rdfTargetName()).isFile();
+					setWorkflowDataAvailable(isFiltersAvailable(),
+							!successfulRequest.settings().exportAsIcdd(), queryAvailable);
+					if (queryAvailable) {
+						this.sparqlResultsTxt.setText("Ready. Run a SPARQL query against "
+								+ new File(successfulRequest.settings().rdfTargetName()).getName() + ".");
+						validateLoadedShapesAsync();
+					}
+				}
+			});
+		}
+		if (event.getPhase() == ProcessReadyEvent.ERROR) {
+			Platform.runLater(() -> {
+				this.pendingConversionRequest = null;
+				this.lastSuccessfulConversionRequest = null;
+			});
+			Platform.runLater(() -> setRunReady(false));
+			Platform.runLater(() -> setWorkflowDataAvailable(isFiltersAvailable(), false, false));
+			Platform.runLater(() -> clearGeometryPreview("Geometry preview unavailable because conversion failed."));
+		}
+	}
+}
