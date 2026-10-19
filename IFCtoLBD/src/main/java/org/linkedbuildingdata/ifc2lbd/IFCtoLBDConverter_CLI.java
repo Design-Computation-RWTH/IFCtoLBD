@@ -130,6 +130,9 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 	@Option(names = "--naming-strategy", description = "IRI strategy: ${COMPLETION-CANDIDATES}")
 	private Optional<ConversionProperties.NamingStrategy> namingStrategy;
 
+	@Option(names = "--staging", description = "Intermediate graph store: ${COMPLETION-CANDIDATES}")
+	private Optional<ConversionSession.Storage> staging;
+
 	@Option(names = { "--hasSimpleProperties" }, arity = "0..1", fallbackValue = "true", description = "Simplified property predicates are used.")
 	private Optional<Boolean> hasSimpleProperties;
 
@@ -165,7 +168,7 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 	@Option(names = { "--JSON" }, arity = "0..1", fallbackValue = "true", description = "Export as JSON-LD.")
 	private Optional<Boolean> exportJSON;
 
-	@Option(names = "--profile", description = "Named conversion profile (for example core, properties-opm, geometry-full).")
+	@Option(names = "--profile", description = "Named conversion profile (for example core, properties-opm, materials-bmo).")
 	private Optional<String> profile;
 
 	@Option(names = "--validate", arity = "0..1", fallbackValue = "true", description = "Run all standard SHACL validation packs.")
@@ -186,6 +189,31 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 	@Option(names = "--compare-to", description = "Compare the input with this earlier IFC revision. Requires --profile=revision-ready and --model-scope.")
 	private Optional<Path> previousIfc;
 
+	@Option(names = "--etim-dictionary", description = "Versioned ETIM dictionary URI used for optional bSDD cache loading.")
+	private Optional<String> etimDictionary;
+
+	@Option(names = "--classification-cache", description = "Directory containing the offline classification cache.")
+	private Optional<Path> classificationCache;
+
+	@Option(names = "--classification-cache-version", description = "Classification cache namespace/version.")
+	private Optional<String> classificationCacheVersion;
+
+	@Option(names = "--load-etim-metadata", arity = "0..1", fallbackValue = "true",
+			description = "Explicitly access bSDD before conversion to cache ETIM dictionary rights metadata.")
+	private Optional<Boolean> loadEtimMetadata;
+
+	@Option(names = "--load-etim", description = "Explicitly access bSDD before conversion and cache this ETIM class code. May be repeated.")
+	private Set<String> loadEtimCodes = new HashSet<>();
+
+	@Option(names = "--load-etim-candidates", description = "Explicitly cache ETIM candidates for this IFC entity before conversion. May be repeated.")
+	private Set<String> loadEtimCandidateEntities = new HashSet<>();
+
+	@Option(names = "--suggest-etim", arity = "0..1", fallbackValue = "true",
+			description = "Generate deterministic ETIM suggestions from the offline cache.")
+	private Optional<Boolean> suggestEtim;
+
+	private ClassificationResolver classificationResolver = ClassificationResolver.none();
+
 	
 	
 	@Override
@@ -202,9 +230,11 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 		String outputFile = target_file.orElseGet(() -> ifc_filename.replaceFirst("(?i)\\.(?:ifc(?:zip|xml|json)?|xml|json)$", "")
 				+ (namedGraphs.orElse(false) ? ".trig" : exportJSON.orElse(false) ? ".jsonld" : ".ttl"));
 		System.out.println("Target is: " + outputFile);
+		classificationResolver = prepareClassificationResolver();
 		if (previousIfc.isPresent()) return compareRevisions(ifcFile, Path.of(outputFile));
-		try (IFCtoLBDConverter converter = new IFCtoLBDConverter(uriBase.orElse("https://lbd.example.com/"),
-				hasPropertiesBlankNodes.orElse(false), props_level.orElse(1))) {
+		try (ConversionSession session = new ConversionSession(staging.orElse(ConversionSession.Storage.MEMORY));
+				IFCtoLBDConverter converter = new IFCtoLBDConverter(session, uriBase.orElse("https://lbd.example.com/"),
+						hasPropertiesBlankNodes.orElse(false), props_level.orElse(1))) {
 			try (ConversionResult result = converter.convert(createRequest(ifcFile));
 					OutputStream output = Files.newOutputStream(Path.of(outputFile))) {
 				if (namedGraphs.orElse(false)) RDFDataMgr.write(output, result.getDataset(), RDFFormat.TRIG_PRETTY);
@@ -226,7 +256,37 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 		if (validate.orElse(false)) request = request.withStandardValidation();
 		else if (!validationPacks.isEmpty())
 			request = request.withValidation(validationPacks.toArray(ValidationShapePack[]::new));
+		if (classificationResolver != ClassificationResolver.none())
+			request = request.withClassificationResolver(classificationResolver);
+		if (suggestEtim.orElse(false)) request = request.withEtimClassificationSuggestions();
 		return request;
+	}
+
+	private ClassificationResolver prepareClassificationResolver() {
+		boolean refresh = loadEtimMetadata.orElse(false) || !loadEtimCodes.isEmpty()
+				|| !loadEtimCandidateEntities.isEmpty();
+		boolean configured = refresh || etimDictionary.isPresent() || classificationCache.isPresent()
+				|| classificationCacheVersion.isPresent() || suggestEtim.orElse(false);
+		if (!configured) return ClassificationResolver.none();
+		if (etimDictionary.isEmpty())
+			throw new IllegalArgumentException("ETIM cache options require --etim-dictionary");
+		Path directory = classificationCache.orElse(Path.of(".ifctolbd", "classification-cache"));
+		String edition = BsddClassificationResolver.dictionaryEdition(etimDictionary.get());
+		String cacheVersion = classificationCacheVersion.orElse("bsdd-etim-" + (edition == null ? "unspecified" : edition));
+		if (refresh) {
+			var online = new EtimClassificationResolver(etimDictionary.get());
+			var loader = new VersionedClassificationResolverCache(directory, cacheVersion, online);
+			if (loadEtimMetadata.orElse(false)) loader.refreshDictionary("ETIM");
+			for (String code : new java.util.TreeSet<>(loadEtimCodes)) {
+				String classUri = etimDictionary.get().replaceFirst("/+$", "") + "/class/" + code;
+				if (loader.refresh(new ClassificationResolver.Request("ETIM", edition, code, null, classUri)).isEmpty())
+					throw new IllegalArgumentException("bSDD did not resolve ETIM class " + code);
+			}
+			for (String entity : new java.util.TreeSet<>(loadEtimCandidateEntities))
+				loader.refreshCandidates(new ClassificationResolver.CandidateRequest("ETIM", entity));
+		}
+		// Construct the resolver used by conversion without a registry client.
+		return new VersionedClassificationResolverCache(directory, cacheVersion);
 	}
 
 	private int compareRevisions(File currentIfc, Path outputFile) throws Exception {
@@ -235,8 +295,12 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 		}
 		File previous = previousIfc.orElseThrow().toFile();
 		if (!previous.isFile()) throw new IllegalArgumentException("Cannot read earlier IFC file: " + previous);
-		try (IFCtoLBDConverter oldConverter = newConverter();
-				IFCtoLBDConverter newConverter = newConverter();
+		try (ConversionSession oldSession = new ConversionSession(staging.orElse(ConversionSession.Storage.MEMORY));
+				ConversionSession newSession = new ConversionSession(staging.orElse(ConversionSession.Storage.MEMORY));
+				IFCtoLBDConverter oldConverter = new IFCtoLBDConverter(oldSession,
+						uriBase.orElse("https://lbd.example.com/"), hasPropertiesBlankNodes.orElse(false), props_level.orElse(1));
+				IFCtoLBDConverter newConverter = new IFCtoLBDConverter(newSession,
+						uriBase.orElse("https://lbd.example.com/"), hasPropertiesBlankNodes.orElse(false), props_level.orElse(1));
 				ConversionResult oldResult = oldConverter.convert(createRequest(previous));
 				ConversionResult newResult = newConverter.convert(createRequest(currentIfc));
 				ConversionDiff diff = new RevisionComparator().compare(oldResult, newResult);
@@ -247,11 +311,6 @@ public class IFCtoLBDConverter_CLI implements Callable<Integer> {
 					+ diff.getRemovedCount() + " removed statements.");
 		}
 		return 0;
-	}
-
-	private IFCtoLBDConverter newConverter() {
-		return new IFCtoLBDConverter(uriBase.orElse("https://lbd.example.com/"),
-				hasPropertiesBlankNodes.orElse(false), props_level.orElse(1));
 	}
 
 	private void runSavedQuery(Model model) throws Exception {

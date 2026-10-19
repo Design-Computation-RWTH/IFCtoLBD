@@ -9,6 +9,7 @@ import org.linkedbuildingdata.ifc2lbd.IFCtoLBDConverter;
 import org.linkedbuildingdata.ifc2lbd.application_messaging.IFC2LBD_ApplicationEventBusService;
 import org.linkedbuildingdata.ifc2lbd.application_messaging.events.IFCtoLBD_SystemStatusEvent;
 import org.linkedbuildingdata.ifc2lbd.messages.ProcessReadyEvent;
+import org.linkedbuildingdata.ifc2lbd.messages.WorkflowProgressEvent;
 
 /* Copyright (C) Fractuscan - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
@@ -40,6 +41,7 @@ public class ConversionThread implements Callable<Integer> {
 	private final EventBus eventBus = IFC2LBD_ApplicationEventBusService.getDefaultEventBus();
 	
 	final private IFCtoLBDConverter converter;
+	final private long operationId;
 	final private Set<String> selected_types;
 	final private Set<String> selected_psets ;
 
@@ -63,6 +65,7 @@ public class ConversionThread implements Callable<Integer> {
     final boolean hasIfc_based_elements;
     final boolean hasInterfaces;
     final boolean hasElementWireframe;
+	final boolean hasMaterialsBmo;
 	final boolean createTrig;
 	final boolean export_as_JSON_LD;
 	final boolean export_as_ICDD;
@@ -70,8 +73,9 @@ public class ConversionThread implements Callable<Integer> {
     private final String target_file;
     private final String ifc_filename;
     
-	public ConversionThread(IFCtoLBDConverter converter,Set<String> selected_types,Set<String> selected_psets, String ifc_filename, @SuppressWarnings("unused") String uriBase, @SuppressWarnings("unused") String target_file,int props_level,boolean hasBuildingElements, boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties,boolean hasSeparatePropertiesModel,boolean hasPropertiesBlankNodes, boolean hasGeolocation,boolean hasGeometry,boolean exportIfcOWL,boolean hasUnits,boolean hasPerformanceBoost,boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming,boolean hasIfc_based_elements,boolean hasInterfaces, boolean createTrig,boolean export_as_JSON_LD, boolean export_as_ICDD, boolean hasElementWireframe, boolean propertiesAsPropertySets) {
+	public ConversionThread(long operationId, IFCtoLBDConverter converter,Set<String> selected_types,Set<String> selected_psets, String ifc_filename, @SuppressWarnings("unused") String uriBase, @SuppressWarnings("unused") String target_file,int props_level,boolean hasBuildingElements, boolean hasSeparateBuildingElementsModel, boolean hasBuildingProperties,boolean hasSeparatePropertiesModel,boolean hasPropertiesBlankNodes, boolean hasGeolocation,boolean hasGeometry,boolean exportIfcOWL,boolean hasUnits,boolean hasPerformanceBoost,boolean hasBoundingBoxWKT,boolean hasHierarchicalNaming,boolean hasIfc_based_elements,boolean hasInterfaces, boolean createTrig,boolean export_as_JSON_LD, boolean export_as_ICDD, boolean hasElementWireframe, boolean propertiesAsPropertySets, boolean hasMaterialsBmo) {
 		super();
+		this.operationId = operationId;
 		this.converter=converter;
 		this.target_file=target_file;
 		this.ifc_filename=ifc_filename;
@@ -94,6 +98,7 @@ public class ConversionThread implements Callable<Integer> {
 		this.hasIfc_based_elements=hasIfc_based_elements;
 		this.hasInterfaces=hasInterfaces;
 		this.hasElementWireframe=hasElementWireframe;
+		this.hasMaterialsBmo=hasMaterialsBmo;
 		this.createTrig=createTrig;
 		this.export_as_JSON_LD=export_as_JSON_LD;
 		this.export_as_ICDD=export_as_ICDD;
@@ -104,20 +109,26 @@ public class ConversionThread implements Callable<Integer> {
 	public Integer call() throws Exception {
 		try {
 			try {
+				eventBus.post(new WorkflowProgressEvent(operationId, "Preparing conversion", 0.08));
 				converter.setSelected_types(selected_types);
 				converter.setSelected_psets(selected_psets);
 				converter.setHasNonLBDElement(hasIfc_based_elements);
 				converter.setPropertiesAsPropertySets(propertiesAsPropertySets);
+				converter.setMaterialsBmoEnabled(hasMaterialsBmo);
 				if (export_as_ICDD) {
 					converter.setTargetFile(null);
 				}
+				eventBus.post(new WorkflowProgressEvent(operationId, "Converting IFC to linked data", 0.22));
 				converter.convert_LBD_phase(hasBuildingElements,
 						export_as_ICDD || hasSeparateBuildingElementsModel, hasBuildingProperties,
 						export_as_ICDD || hasSeparatePropertiesModel,
 						hasGeolocation, hasGeometry || hasElementWireframe, exportIfcOWL, hasUnits, hasBoundingBoxWKT,
 							hasHierarchicalNaming, hasInterfaces, createTrig, export_as_JSON_LD, hasElementWireframe);
 				if (export_as_ICDD) {
+					eventBus.post(new WorkflowProgressEvent(operationId, "Packaging ICDD output", 0.86));
 					converter.exportExistingOutputAsIcdd(target_file, ifc_filename);
+				} else {
+					eventBus.post(new WorkflowProgressEvent(operationId, "Checking RDF output", 0.94));
 				}
 				String outputPath = target_file;
 				if (export_as_JSON_LD && outputPath != null)
@@ -126,20 +137,20 @@ public class ConversionThread implements Callable<Integer> {
 					String message = "Conversion failed: output file was not created"
 							+ (outputPath == null ? "." : ": " + new File(outputPath).getAbsolutePath());
 					eventBus.post(new IFCtoLBD_SystemStatusEvent(message));
-					eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR));
+					eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR, operationId));
 					return -1;
 				}
 			} catch (OutOfMemoryError e) {
 				e.printStackTrace();
 				eventBus.post(new IFCtoLBD_SystemStatusEvent(e.getMessage()));
-				eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR));
+				eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR, operationId));
 				return -1;
 			}
-			eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.CONVERT));
+			eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.CONVERT, operationId));
 			return 0;
 		} catch (Exception e) {
 			e.printStackTrace();
-			eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR));
+			eventBus.post(new ProcessReadyEvent(ProcessReadyEvent.ERROR, operationId));
 			eventBus.post(new IFCtoLBD_SystemStatusEvent(e.getMessage()));
 		}
 		return -1;

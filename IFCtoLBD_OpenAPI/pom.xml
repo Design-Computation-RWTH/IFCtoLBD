@@ -5,7 +5,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>de.rwth-aachen.dc.ifctolbd</groupId>
 	<artifactId>IFCtoLBD_OpenAPI</artifactId>
-	<version>2.54.1</version>
+	<version>2.55.0</version>
 	<packaging>war</packaging>
 	<name>IFCtoLBD OpenAPI Interface</name>
 
@@ -17,12 +17,8 @@
 		</developer>
 	</developers>
 
-	<prerequisites>
-		<maven>3</maven>
-	</prerequisites>
 	<properties>
-		<maven.compiler.source>21</maven.compiler.source>
-		<maven.compiler.target>21</maven.compiler.target>
+		<maven.compiler.release>21</maven.compiler.release>
 		<tomcat.version>9.0.53</tomcat.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<swagger-ui-dist.version>5.17.14</swagger-ui-dist.version>
@@ -30,6 +26,26 @@
 	<build>
 		<finalName>IFCtoLBD_OpenAPI</finalName>
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-enforcer-plugin</artifactId>
+				<version>3.6.3</version>
+				<executions>
+					<execution>
+						<id>enforce-maven-version</id>
+						<goals>
+							<goal>enforce</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<requireMavenVersion>
+									<version>[3.6.3,)</version>
+								</requireMavenVersion>
+							</rules>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -241,7 +257,7 @@
 		<dependency>
 			<groupId>io.github.jyrkioraskari</groupId>
 			<artifactId>ifc-to-lbd</artifactId>
-			<version>2.54.1</version>
+			<version>2.55.0</version>
 		</dependency>
 	</dependencies>
 </project>

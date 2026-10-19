@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.linkedbuildingdata.ifc2lbd.namespace.BSDD;
+import org.linkedbuildingdata.ifc2lbd.namespace.PROPS;
+import org.linkedbuildingdata.ifc2lbd.namespace.BMO;
+import org.linkedbuildingdata.ifc2lbd.namespace.IFCtoLBDMapping;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.vocabulary.RDFS;
 
@@ -69,6 +72,19 @@ class ConversionApiIntegrationTest {
 		}
 	}
 
+	@Test
+	void classicLevelThreeUsesBsddPropertyPredicatesForKnownIfcProperties() throws Exception {
+		File ifcFile = new File(getClass().getResource("/TWO WALLS.ifc").toURI());
+		try (ConversionSession session = new ConversionSession();
+				IFCtoLBDConverter converter = new IFCtoLBDConverter(session, "https://example.com/", false, 3)) {
+			var model = converter.convert(ifcFile.getAbsolutePath());
+			var loadBearing = model.createProperty(BSDD.property_ns + "LoadBearing");
+			var legacyLoadBearing = model.createProperty(PROPS.ns + "loadBearing");
+			assertTrue(model.contains(null, loadBearing));
+			assertFalse(model.contains(null, legacyLoadBearing));
+		}
+	}
+
 	private static Set<Property> describedPredicates(org.apache.jena.rdf.model.Model model, String commentPrefix) {
 		Set<Property> predicates = new HashSet<>();
 		model.listStatements(null, RDFS.comment, (org.apache.jena.rdf.model.RDFNode) null)
@@ -103,6 +119,46 @@ class ConversionApiIntegrationTest {
 		try (ConversionSession session = new ConversionSession();
 				IFCtoLBDConverter converter = new IFCtoLBDConverter(session, "https://example.com/")) {
 			assertFalse(converter.convert(ifcFile.getAbsolutePath(), ConversionProfiles.CORE).isEmpty());
+		}
+	}
+
+	@Test
+	void materialsBmoProfileLinksLayeredMaterialsToExistingElements() throws Exception {
+		File ifcFile = new File(getClass().getResource("/TWO WALLS.ifc").toURI());
+		try (ConversionSession session = new ConversionSession(NoGeometryProvider.INSTANCE);
+				IFCtoLBDConverter converter = new IFCtoLBDConverter(session, "https://example.com/");
+				ConversionResult result = converter.convert(new ConversionRequest(ifcFile.getAbsolutePath(),
+						ConversionProfiles.MATERIALS_BMO))) {
+			var products = result.getProductModel();
+			var properties = result.getPropertyModel();
+			assertTrue(products.contains(null, IFCtoLBDMapping.materialAssignment));
+			assertTrue(products.contains(null, IFCtoLBDMapping.assignedMaterialDefinition));
+			assertTrue(products.contains(null, IFCtoLBDMapping.layerMembership));
+			assertTrue(products.contains(null, BMO.hasLayers));
+			assertTrue(products.contains(null, BMO.hasMaterial));
+			assertTrue(properties.contains(null, BMO.hasThickness));
+			assertTrue(properties.contains(null, IFCtoLBDMapping.thicknessQuantity));
+			assertFalse(result.getGeneralModel().contains(null, IFCtoLBDMapping.materialAssignment));
+			assertTrue(result.getModel().contains(null, IFCtoLBDMapping.materialAssignment));
+			assertTrue(result.getModel().contains(null, BMO.hasThickness));
+			assertTrue(products.intersection(properties).isEmpty());
+		}
+	}
+
+	@Test
+	void materialsBmoProfileReportsUnsupportedIfcMaterialStructures() throws Exception {
+		File ifcFile = new File(getClass().getResource("/SampleHouse.ifc").toURI());
+		try (ConversionSession session = new ConversionSession(NoGeometryProvider.INSTANCE);
+				IFCtoLBDConverter converter = new IFCtoLBDConverter(session, "https://example.com/");
+				ConversionResult result = converter.convert(new ConversionRequest(ifcFile.getAbsolutePath(),
+						ConversionProfiles.MATERIALS_BMO))) {
+			var report = result.getValidationModel();
+			assertTrue(report.contains(null,
+					report.createProperty(MaterialConversionStage.REPORT_NS + "code"),
+					"UNSUPPORTED_MATERIAL_STRUCTURE"));
+			assertTrue(report.contains(null,
+					report.createProperty(MaterialConversionStage.REPORT_NS + "ifcStructureType"),
+					"IfcMaterialList"));
 		}
 	}
 
@@ -164,7 +220,7 @@ class ConversionApiIntegrationTest {
 			assertFalse(manifest.isEmpty());
 			assertTrue(manifest.contains(null, manifest.createProperty(ConversionManifest.NS + "profile"), "core"));
 			assertTrue(manifest.contains(null, manifest.createProperty(ConversionManifest.NS + "converterVersion"),
-					"2.54.1"));
+					"2.55.0"));
 			assertTrue(manifest.contains(null, manifest.createProperty("http://www.w3.org/ns/prov#generatedAtTime")));
 		}
 	}
